@@ -14,8 +14,8 @@ const DEMO_TRACK: PlayerTrackInfo = {
 };
 
 const DEMO_URL = './demo/pulse.mp3';
-const SLOW_FRAME_MS = 24;
-const SLOW_FRAME_LIMIT = 30;
+const SLOW_FRAME_MS = 35;
+const SLOW_FRAME_LIMIT = 90;
 
 export function boot(): void {
   const container = document.querySelector<HTMLElement>('#canvas-host');
@@ -86,6 +86,10 @@ export function boot(): void {
         console.warn('Failed to initialize 2D canvas spectrum:', err);
       }
     }
+    const updated = saveSettings({ visualizerMode: '2d' });
+    if (controls) {
+      controls.syncFromSettings(updated);
+    }
     setStatusMessage(message);
   };
 
@@ -145,6 +149,7 @@ export function boot(): void {
     if (nextBarCount < settings.barCount) {
       updates.barCount = nextBarCount;
     }
+    const prevMode = settings.visualizerMode;
     if (settings.visualizerMode === 'particles' || settings.visualizerMode === 'orb' || settings.visualizerMode === 'lava') {
       updates.visualizerMode = 'bars';
     }
@@ -152,10 +157,20 @@ export function boot(): void {
 
     const updated = saveSettings(updates);
     applySettings(updated);
-    controls.syncFromSettings(updated);
+    if (controls) {
+      controls.syncFromSettings(updated);
+    }
     const parts = [];
     if (updates.barCount) parts.push(`bar count ${updated.barCount}`);
-    if (updates.visualizerMode) parts.push('particles off');
+    if (updates.visualizerMode) {
+      if (prevMode === 'lava') {
+        parts.push('lava lamp off');
+      } else if (prevMode === 'orb') {
+        parts.push('shader orb off');
+      } else {
+        parts.push('particles off');
+      }
+    }
     setStatusMessage(`Performance: reduced ${parts.join(', ')}.`);
   };
 
@@ -171,7 +186,7 @@ export function boot(): void {
       return;
     }
 
-    if (lastFrameTime > 0) {
+    if (lastFrameTime > 0 && player.isPlaying()) {
       const dt = now - lastFrameTime;
       if (dt > SLOW_FRAME_MS) {
         slowFrameCount += 1;
@@ -180,8 +195,10 @@ export function boot(): void {
           degradePerformance();
         }
       } else {
-        slowFrameCount = 0;
+        slowFrameCount = Math.max(0, slowFrameCount - 1);
       }
+    } else {
+      slowFrameCount = 0;
     }
     lastFrameTime = now;
 

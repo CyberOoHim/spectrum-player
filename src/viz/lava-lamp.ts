@@ -364,7 +364,7 @@ export class LavaLamp {
     this.onContextLostCb = options.onContextLost;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.0));
     this.renderer.setSize(this.container.clientWidth || 800, this.container.clientHeight || 400);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
