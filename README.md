@@ -10,6 +10,7 @@ A high-performance standalone web audio player and interactive 3D frequency spec
   - **3D Bars**: Instanced frequency spectrum bars.
   - **3D Radial**: Circular spectrum ring.
   - **3D Particles**: Audio-reactive particle system responding to bass, mid, and high bands.
+  - **Lumina Lava**: A realistic lava-lamp EQ — gooey metaball wax in a glass bottle, driven by bass/mid/treble.
   - **2D Canvas Fallback**: Lightweight 2D canvas mode for low-power devices or WebGL fallback.
 - **Audio Playback & Analysis**:
   - Pre-gain analyser node so visuals remain active even when listening at low volume.
@@ -29,7 +30,7 @@ A high-performance standalone web audio player and interactive 3D frequency spec
 - **Accessibility & Polish**:
   - Screen reader accessible DOM structure and `aria-live` status notifications.
   - Clear `:focus-visible` focus rings across controls.
-  - Reduced motion: system preference or an in-app override disables camera orbit and particle/orb motion.
+  - Reduced motion: system preference or an in-app override disables camera orbit and particle/orb/lava motion.
 
 ---
 

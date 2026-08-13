@@ -55,6 +55,23 @@ describe('Settings Storage Module', () => {
     expect(settings.version).toBe(1);
   });
 
+  it('persists lava visualizer mode', () => {
+    saveSettings({ visualizerMode: 'lava', colorMode: 'mood' });
+    const settings = loadSettings();
+    expect(settings.visualizerMode).toBe('lava');
+    expect(settings.colorMode).toBe('mood');
+  });
+
+  it('falls back to bars for unknown visualizer modes', () => {
+    localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ visualizerMode: 'unknown-mode', volume: 0.4 })
+    );
+    const settings = loadSettings();
+    expect(settings.visualizerMode).toBe('bars');
+    expect(settings.volume).toBe(0.4);
+  });
+
   it('clamps invalid numerical values on load', () => {
     localStorage.setItem(
       SETTINGS_STORAGE_KEY,

@@ -4,6 +4,7 @@ import { loadSession, saveSession } from './storage/session';
 import { getTrackData } from './storage/library';
 import { Spectrum3D } from './viz/spectrum-3d';
 import { Spectrum2D } from './viz/spectrum-2d';
+import { LavaLamp } from './viz/lava-lamp';
 import { UIControls } from './ui/controls';
 
 const DEMO_TRACK: PlayerTrackInfo = {
@@ -49,6 +50,8 @@ export function boot(): void {
 
   let viz3d: Spectrum3D | null = null;
   let viz2d: Spectrum2D | null = null;
+  let vizLava: LavaLamp | null = null;
+  const idleBands = new Float32Array(64);
 
   const destroyVisualizers = () => {
     if (viz3d) {
@@ -59,6 +62,11 @@ export function boot(): void {
       viz2d.destroy();
       viz2d = null;
     }
+    if (vizLava) {
+      vizLava.destroy();
+      vizLava = null;
+    }
+    container.classList.remove('lava-stage');
   };
 
   const fallBackTo2D = (message: string) => {
@@ -66,6 +74,11 @@ export function boot(): void {
       viz3d.destroy();
       viz3d = null;
     }
+    if (vizLava) {
+      vizLava.destroy();
+      vizLava = null;
+    }
+    container.classList.remove('lava-stage');
     if (!viz2d) {
       try {
         viz2d = new Spectrum2D(container);
@@ -84,6 +97,19 @@ export function boot(): void {
         viz2d = new Spectrum2D(container);
       } catch (err) {
         console.warn('Failed to initialize 2D canvas spectrum:', err);
+      }
+      return;
+    }
+
+    if (settings.visualizerMode === 'lava') {
+      container.classList.add('lava-stage');
+      try {
+        vizLava = new LavaLamp(container, {
+          onContextLost: () => fallBackTo2D('WebGL unavailable. Using 2D spectrum.'),
+        });
+      } catch (err) {
+        console.warn('Lava lamp initialization failed, falling back to 2D canvas spectrum:', err);
+        fallBackTo2D('WebGL unavailable. Using 2D spectrum.');
       }
       return;
     }
@@ -119,7 +145,7 @@ export function boot(): void {
     if (nextBarCount < settings.barCount) {
       updates.barCount = nextBarCount;
     }
-    if (settings.visualizerMode === 'particles' || settings.visualizerMode === 'orb') {
+    if (settings.visualizerMode === 'particles' || settings.visualizerMode === 'orb' || settings.visualizerMode === 'lava') {
       updates.visualizerMode = 'bars';
     }
     if (Object.keys(updates).length === 0) return;
@@ -133,9 +159,15 @@ export function boot(): void {
     setStatusMessage(`Performance: reduced ${parts.join(', ')}.`);
   };
 
+  const shouldKeepLoop = () => {
+    if (document.hidden) return false;
+    if (player.isPlaying()) return true;
+    return settings.visualizerMode === 'lava' && vizLava !== null;
+  };
+
   const renderFrame = (now: number) => {
-    rafId = null;
-    if (!player.isPlaying() || document.hidden) {
+    if (!shouldKeepLoop()) {
+      rafId = null;
       return;
     }
 
@@ -153,8 +185,12 @@ export function boot(): void {
     }
     lastFrameTime = now;
 
-    const bands = player.getBands(settings.barCount, settings.sensitivity);
-    if (viz3d) {
+    const bands = player.isPlaying()
+      ? player.getBands(settings.barCount, settings.sensitivity)
+      : idleBands;
+    if (vizLava) {
+      vizLava.render(bands, settings);
+    } else if (viz3d) {
       viz3d.render(bands, settings);
     } else if (viz2d) {
       viz2d.render(bands, settings);
@@ -164,7 +200,7 @@ export function boot(): void {
   };
 
   const startLoop = () => {
-    if (rafId === null && player.isPlaying() && !document.hidden) {
+    if (rafId === null && shouldKeepLoop()) {
       lastFrameTime = 0;
       rafId = requestAnimationFrame(renderFrame);
     }
@@ -179,6 +215,11 @@ export function boot(): void {
     player.setFftSize(settings.fftSize);
     if (modeChanged) {
       initVisualizer();
+      if (shouldKeepLoop()) {
+        startLoop();
+      } else {
+        stopLoop();
+      }
     }
   };
 
@@ -212,6 +253,10 @@ export function boot(): void {
     onTrackSelected: handleTrackSelected,
     setStatusMessage,
   });
+
+  if (shouldKeepLoop()) {
+    startLoop();
+  }
 
   const restoreLastSession = async () => {
     const session = loadSession();
@@ -249,8 +294,8 @@ export function boot(): void {
   });
 
   let lastSaveTime = 0;
-  player.subscribe(({ isPlaying, currentTime, duration, trackInfo }) => {
-    if (isPlaying) {
+  player.subscribe(({ currentTime, duration, trackInfo }) => {
+    if (shouldKeepLoop()) {
       startLoop();
     } else {
       stopLoop();
@@ -273,7 +318,7 @@ export function boot(): void {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       stopLoop();
-    } else if (player.isPlaying()) {
+    } else if (shouldKeepLoop()) {
       startLoop();
     }
   });
