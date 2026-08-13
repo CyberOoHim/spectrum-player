@@ -1,6 +1,7 @@
 import { AudioPlayer, PlayerTrackInfo } from '../audio/player';
 import { AppSettingsV1, saveSettings, resetSettings } from '../storage/settings';
 import { saveTrack, getAllTrackMetadata, deleteTrack, getTrackData, getStorageEstimate, clearAllTracks, TrackMetadata } from '../storage/library';
+import { isAtmosphereMode, sceneSpeedLabel } from '../viz/scenes/registry';
 
 export interface UIControlsConfig {
   player: AudioPlayer;
@@ -40,8 +41,9 @@ export class UIControls {
   private sensitivityInput: HTMLInputElement;
   private barCountSelect: HTMLSelectElement | null;
   private fftSizeSelect: HTMLSelectElement | null;
-  private lavaSpeedInput: HTMLInputElement | null;
-  private lavaSpeedControl: HTMLElement | null;
+  private sceneSpeedInput: HTMLInputElement | null;
+  private sceneSpeedControl: HTMLElement | null;
+  private sceneSpeedLabelEl: HTMLElement | null;
   private reducedMotionSelect: HTMLSelectElement | null;
   private autoRotateInput: HTMLInputElement | null;
   private autoRotateSpeedInput: HTMLInputElement | null;
@@ -86,8 +88,9 @@ export class UIControls {
     this.sensitivityInput = document.querySelector<HTMLInputElement>('#sensitivity')!;
     this.barCountSelect = document.querySelector<HTMLSelectElement>('#bar-count');
     this.fftSizeSelect = document.querySelector<HTMLSelectElement>('#fft-size');
-    this.lavaSpeedInput = document.querySelector<HTMLInputElement>('#lava-speed');
-    this.lavaSpeedControl = document.querySelector<HTMLElement>('#lava-speed-control');
+    this.sceneSpeedInput = document.querySelector<HTMLInputElement>('#scene-speed');
+    this.sceneSpeedControl = document.querySelector<HTMLElement>('#scene-speed-control');
+    this.sceneSpeedLabelEl = document.querySelector<HTMLElement>('#scene-speed-label');
     this.reducedMotionSelect = document.querySelector<HTMLSelectElement>('#reduced-motion');
     this.autoRotateInput = document.querySelector<HTMLInputElement>('#auto-rotate');
     this.autoRotateSpeedInput = document.querySelector<HTMLInputElement>('#auto-rotate-speed');
@@ -125,6 +128,15 @@ export class UIControls {
     this.config.settings = updated;
     this.config.onSettingsChange(updated);
     return updated;
+  }
+
+  private syncSceneSpeedControl(mode: AppSettingsV1['visualizerMode']): void {
+    if (this.sceneSpeedControl) {
+      this.sceneSpeedControl.style.display = isAtmosphereMode(mode) ? 'flex' : 'none';
+    }
+    if (this.sceneSpeedLabelEl) {
+      this.sceneSpeedLabelEl.textContent = sceneSpeedLabel(mode);
+    }
   }
 
   private applyVolume(vol: number): void {
@@ -189,10 +201,8 @@ export class UIControls {
     if (this.sensitivityInput) this.sensitivityInput.value = s.sensitivity.toString();
     if (this.barCountSelect) this.barCountSelect.value = String(s.barCount);
     if (this.fftSizeSelect) this.fftSizeSelect.value = String(s.fftSize);
-    if (this.lavaSpeedInput) this.lavaSpeedInput.value = s.lavaSpeed.toString();
-    if (this.lavaSpeedControl) {
-      this.lavaSpeedControl.style.display = s.visualizerMode === 'lava' ? 'flex' : 'none';
-    }
+    if (this.sceneSpeedInput) this.sceneSpeedInput.value = s.sceneSpeed.toString();
+    this.syncSceneSpeedControl(s.visualizerMode);
     if (this.reducedMotionSelect) this.reducedMotionSelect.value = s.reducedMotionOverride;
     if (this.autoRotateInput) this.autoRotateInput.checked = s.cameraAutoRotate;
     if (this.autoRotateSpeedInput) {
@@ -252,9 +262,7 @@ export class UIControls {
 
     this.modeSelect.addEventListener('change', () => {
       const mode = this.modeSelect.value as AppSettingsV1['visualizerMode'];
-      if (this.lavaSpeedControl) {
-        this.lavaSpeedControl.style.display = mode === 'lava' ? 'flex' : 'none';
-      }
+      this.syncSceneSpeedControl(mode);
       this.persistSettings({ visualizerMode: mode });
     });
 
@@ -287,10 +295,10 @@ export class UIControls {
       });
     }
 
-    if (this.lavaSpeedInput) {
-      this.lavaSpeedInput.addEventListener('input', () => {
-        const lavaSpeed = parseFloat(this.lavaSpeedInput!.value);
-        this.persistSettings({ lavaSpeed });
+    if (this.sceneSpeedInput) {
+      this.sceneSpeedInput.addEventListener('input', () => {
+        const sceneSpeed = parseFloat(this.sceneSpeedInput!.value);
+        this.persistSettings({ sceneSpeed });
       });
     }
 

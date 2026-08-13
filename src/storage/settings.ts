@@ -5,7 +5,7 @@ export interface AppSettingsV1 {
   volume: number;
   muted: boolean;
   loop: boolean;
-  visualizerMode: 'bars' | 'radial' | 'particles' | '2d' | 'orb' | 'lava';
+  visualizerMode: 'bars' | 'radial' | 'particles' | '2d' | 'orb' | 'lava' | 'hearth';
   colorMode: 'spectrum' | 'mono' | 'mood';
   sensitivity: number;
   fftSize: 512 | 1024 | 2048;
@@ -13,7 +13,7 @@ export interface AppSettingsV1 {
   reducedMotionOverride: 'system' | 'on' | 'off';
   cameraAutoRotate: boolean;
   cameraAutoRotateSpeed: number;
-  lavaSpeed: number;
+  sceneSpeed: number;
 }
 
 export const DEFAULT_SETTINGS: AppSettingsV1 = {
@@ -29,7 +29,7 @@ export const DEFAULT_SETTINGS: AppSettingsV1 = {
   reducedMotionOverride: 'system',
   cameraAutoRotate: true,
   cameraAutoRotateSpeed: 1.0,
-  lavaSpeed: 0.8,
+  sceneSpeed: 0.8,
 };
 
 const PERSIST_DEBOUNCE_MS = 300;
@@ -59,7 +59,9 @@ export function normalizeSettings(input: unknown): AppSettingsV1 {
   const volume = typeof parsed.volume === 'number' ? clamp(parsed.volume, 0, 1) : DEFAULT_SETTINGS.volume;
   const muted = typeof parsed.muted === 'boolean' ? parsed.muted : DEFAULT_SETTINGS.muted;
   const loop = typeof parsed.loop === 'boolean' ? parsed.loop : DEFAULT_SETTINGS.loop;
-  const visualizerMode = ['bars', 'radial', 'particles', '2d', 'orb', 'lava'].includes(parsed.visualizerMode as string)
+  const visualizerMode = ['bars', 'radial', 'particles', '2d', 'orb', 'lava', 'hearth'].includes(
+    parsed.visualizerMode as string
+  )
     ? (parsed.visualizerMode as AppSettingsV1['visualizerMode'])
     : DEFAULT_SETTINGS.visualizerMode;
   const colorMode = ['spectrum', 'mono', 'mood'].includes(parsed.colorMode as string)
@@ -75,7 +77,13 @@ export function normalizeSettings(input: unknown): AppSettingsV1 {
     : DEFAULT_SETTINGS.reducedMotionOverride;
   const cameraAutoRotate = typeof parsed.cameraAutoRotate === 'boolean' ? parsed.cameraAutoRotate : DEFAULT_SETTINGS.cameraAutoRotate;
   const cameraAutoRotateSpeed = typeof parsed.cameraAutoRotateSpeed === 'number' ? clamp(parsed.cameraAutoRotateSpeed, 0.1, 3.0) : DEFAULT_SETTINGS.cameraAutoRotateSpeed;
-  const lavaSpeed = typeof parsed.lavaSpeed === 'number' ? clamp(parsed.lavaSpeed, 0.1, 1.5) : DEFAULT_SETTINGS.lavaSpeed;
+  const rawSceneSpeed =
+    typeof parsed.sceneSpeed === 'number'
+      ? parsed.sceneSpeed
+      : typeof parsed.lavaSpeed === 'number'
+        ? parsed.lavaSpeed
+        : DEFAULT_SETTINGS.sceneSpeed;
+  const sceneSpeed = clamp(rawSceneSpeed, 0.1, 1.5);
 
   return {
     version: 1,
@@ -90,7 +98,7 @@ export function normalizeSettings(input: unknown): AppSettingsV1 {
     reducedMotionOverride,
     cameraAutoRotate,
     cameraAutoRotateSpeed,
-    lavaSpeed,
+    sceneSpeed,
   };
 }
 

@@ -60,12 +60,33 @@ describe('Settings Storage Module', () => {
     expect(settings.version).toBe(1);
   });
 
-  it('persists lava visualizer mode and lavaSpeed', () => {
-    saveSettings({ visualizerMode: 'lava', colorMode: 'mood', lavaSpeed: 1.2 });
+  it('persists lava visualizer mode and sceneSpeed', () => {
+    saveSettings({ visualizerMode: 'lava', colorMode: 'mood', sceneSpeed: 1.2 });
     const settings = loadSettings();
     expect(settings.visualizerMode).toBe('lava');
     expect(settings.colorMode).toBe('mood');
-    expect(settings.lavaSpeed).toBe(1.2);
+    expect(settings.sceneSpeed).toBe(1.2);
+  });
+
+  it('persists hearth visualizer mode', () => {
+    saveSettings({ visualizerMode: 'hearth', sceneSpeed: 0.6 });
+    const settings = loadSettings();
+    expect(settings.visualizerMode).toBe('hearth');
+    expect(settings.sceneSpeed).toBe(0.6);
+  });
+
+  it('reads legacy lavaSpeed as sceneSpeed', () => {
+    localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ visualizerMode: 'lava', lavaSpeed: 1.1 })
+    );
+    const settings = loadSettings();
+    expect(settings.visualizerMode).toBe('lava');
+    expect(settings.sceneSpeed).toBe(1.1);
+  });
+
+  it('keeps bars as the default visualizer mode', () => {
+    expect(DEFAULT_SETTINGS.visualizerMode).toBe('bars');
   });
 
   it('persists cameraAutoRotateSpeed and clamps bounds', () => {

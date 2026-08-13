@@ -39,12 +39,17 @@
             <span class="label-text">Visual Mode</span>
             <div class="select-wrapper">
               <select id="mode-select" aria-label="Visualizer Mode">
-                <option value="bars">3D Bars</option>
-                <option value="radial">3D Radial</option>
-                <option value="particles">3D Particles</option>
-                <option value="orb">3D Shader Orb</option>
-                <option value="lava">Lumina Lava</option>
-                <option value="2d">2D Canvas</option>
+                <optgroup label="Spectrum">
+                  <option value="bars">3D Bars</option>
+                  <option value="radial">3D Radial</option>
+                  <option value="particles">3D Particles</option>
+                  <option value="orb">3D Shader Orb</option>
+                  <option value="2d">2D Canvas</option>
+                </optgroup>
+                <optgroup label="Atmosphere">
+                  <option value="lava">Lumina Lava</option>
+                  <option value="hearth">Ember Hearth</option>
+                </optgroup>
               </select>
               <svg class="select-arrow" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
             </div>
@@ -232,16 +237,16 @@
                   </div>
                 </label>
 
-                <label class="control-card" id="lava-speed-control">
-                  <span class="card-label">Lava Lamp Flow Speed</span>
+                <label class="control-card" id="scene-speed-control">
+                  <span class="card-label" id="scene-speed-label">Atmosphere speed</span>
                   <input
                     type="range"
-                    id="lava-speed"
+                    id="scene-speed"
                     min="0.1"
                     max="1.5"
                     step="0.05"
                     value="0.8"
-                    aria-label="Lava Lamp speed"
+                    aria-label="Atmosphere speed"
                   />
                 </label>
 

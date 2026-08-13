@@ -1,11 +1,10 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { AppSettingsV1 } from '../storage/settings';
+import { AudioEnergySmoother, bandAt } from './audio-energy';
+import { atmosphereSpeed, SceneVisualizerOptions } from './scene';
+import { SceneRuntime } from './scene-runtime';
 
-export interface LavaLampOptions {
-  onContextLost?: () => void;
-}
+export type LavaLampOptions = SceneVisualizerOptions;
 
 const MAX_BLOBS = 12;
 
@@ -21,13 +20,6 @@ interface WaxBlob {
   phase: number;
   bandT: number;
   colorIndex: number;
-}
-
-function isReducedMotion(settings: AppSettingsV1): boolean {
-  return (
-    settings.reducedMotionOverride === 'on' ||
-    (settings.reducedMotionOverride === 'system' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-  );
 }
 
 function makeBrassMaps(): { map: THREE.CanvasTexture; roughness: THREE.CanvasTexture } {
@@ -318,91 +310,54 @@ void main() {
 `;
 
 export class LavaLamp {
-  private container: HTMLElement;
-  private scene: THREE.Scene;
-  private camera: THREE.PerspectiveCamera;
-  private renderer: THREE.WebGLRenderer;
-  private controls: OrbitControls;
-  private resizeObserver: ResizeObserver;
-  private onContextLostCb?: () => void;
+  private readonly runtime: SceneRuntime;
+  private readonly energy = new AudioEnergySmoother();
 
   private lampGroup: THREE.Group;
   private waxMesh: THREE.Mesh;
   private waxMaterial: THREE.ShaderMaterial;
   private heaterLight: THREE.PointLight;
   private waxLight: THREE.PointLight;
-  private envMap: THREE.Texture | null = null;
-  private pmrem: THREE.PMREMGenerator;
   private brassMaps: { map: THREE.CanvasTexture; roughness: THREE.CanvasTexture };
 
   private blobs: WaxBlob[] = [];
-  private lastTime = 0;
   private simTime = 0;
-  private heatPulse = 0;
-  private smoothBass = 0;
-  private smoothMid = 0;
-  private smoothTreble = 0;
-  private smoothEnergy = 0;
 
-  private isDestroyed = false;
-  private contextLost = false;
+  private get scene(): THREE.Scene {
+    return this.runtime.scene;
+  }
 
-  private currentPixelRatio = 1.0;
-  private minPixelRatio = 0.55;
-  private maxPixelRatio = 1.0;
-  private emaFrameTime = 16.6;
-  private lastDprAdjustTime = 0;
+  private get camera(): THREE.PerspectiveCamera {
+    return this.runtime.camera;
+  }
+
+  private get controls() {
+    return this.runtime.controls;
+  }
 
   constructor(container: HTMLElement, options: LavaLampOptions = {}) {
-    this.container = container;
-    this.onContextLostCb = options.onContextLost;
-
-    const isMobile =
-      typeof window !== 'undefined' &&
-      (window.innerWidth < 768 ||
-        (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
-        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent));
-
-    this.maxPixelRatio = isMobile ? 0.9 : Math.min(window.devicePixelRatio || 1, 1.0);
-    this.currentPixelRatio = isMobile ? 0.8 : this.maxPixelRatio;
-
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(this.currentPixelRatio);
-    this.renderer.setSize(this.container.clientWidth || 800, this.container.clientHeight || 400);
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.domElement.setAttribute('aria-hidden', 'true');
-
-    this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost);
-    this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored);
-
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0c0709);
-    this.scene.fog = new THREE.FogExp2(0x0c0709, 0.018);
-
-    this.pmrem = new THREE.PMREMGenerator(this.renderer);
-    const envScene = new RoomEnvironment();
-    this.envMap = this.pmrem.fromScene(envScene, 0.04).texture;
-    this.scene.environment = this.envMap;
-    this.scene.environmentIntensity = 0.28;
-    envScene.dispose();
-
-    const width = this.container.clientWidth || 800;
-    const height = this.container.clientHeight || 400;
-    this.camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 120);
-    this.camera.position.set(0.22, 6.85, 24.5);
-
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.06;
-    this.controls.enablePan = false;
-    this.controls.minDistance = 16;
-    this.controls.maxDistance = 42;
-    this.controls.minPolarAngle = Math.PI * 0.32;
-    this.controls.maxPolarAngle = Math.PI * 0.62;
-    this.controls.target.set(0, 6.85, 0);
-    this.controls.autoRotateSpeed = 0.45;
+    this.runtime = new SceneRuntime(container, {
+      onContextLost: options.onContextLost,
+      fov: 36,
+      near: 0.1,
+      far: 120,
+      cameraPosition: [0.22, 6.85, 24.5],
+      target: [0, 6.85, 0],
+      enablePan: false,
+      minDistance: 16,
+      maxDistance: 42,
+      minPolarAngle: Math.PI * 0.32,
+      maxPolarAngle: Math.PI * 0.62,
+      dampingFactor: 0.06,
+      background: 0x0c0709,
+      fogDensity: 0.018,
+      toneMappingExposure: 1.05,
+      useEnvironment: true,
+      environmentIntensity: 0.28,
+      environmentBlur: 0.04,
+      autoRotateSpeedScale: 1.5,
+      onResize: () => this.frameLamp(),
+    });
 
     this.brassMaps = makeBrassMaps();
     this.lampGroup = new THREE.Group();
@@ -448,23 +403,8 @@ export class LavaLamp {
     this.scene.add(this.waxLight);
 
     this.spawnBlobs();
-
-    this.resizeObserver = new ResizeObserver(() => this.resize());
-    this.resizeObserver.observe(this.container);
-    this.container.appendChild(this.renderer.domElement);
-    this.resize();
+    this.runtime.resize();
   }
-
-  private handleContextLost = (event: Event): void => {
-    event.preventDefault();
-    this.contextLost = true;
-    this.onContextLostCb?.();
-  };
-
-  private handleContextRestored = (): void => {
-    this.contextLost = false;
-    this.resize();
-  };
 
   private brassMaterial(repeatX = 1, repeatY = 1, darker = false): THREE.MeshStandardMaterial {
     const map = this.brassMaps.map.clone();
@@ -692,34 +632,8 @@ export class LavaLamp {
     return new THREE.Color(palette[blob.colorIndex % palette.length]);
   }
 
-  private bandEnergy(bands: Float32Array, t: number): number {
-    if (bands.length === 0) return 0;
-    const idx = Math.min(bands.length - 1, Math.floor(t * bands.length));
-    return bands[idx] ?? 0;
-  }
-
   private updatePhysics(dt: number, bands: Float32Array, reduced: boolean): void {
-    const third = Math.max(1, Math.floor(bands.length / 3));
-    let bass = 0;
-    let mid = 0;
-    let treble = 0;
-    for (let i = 0; i < bands.length; i++) {
-      if (i < third) bass += bands[i];
-      else if (i < third * 2) mid += bands[i];
-      else treble += bands[i];
-    }
-    bass /= third;
-    mid /= third;
-    treble /= Math.max(1, bands.length - third * 2);
-    const energy = bands.length ? (bass * 0.5 + mid * 0.3 + treble * 0.2) : 0;
-
-    this.smoothBass += (bass - this.smoothBass) * 0.2;
-    this.smoothMid += (mid - this.smoothMid) * 0.16;
-    this.smoothTreble += (treble - this.smoothTreble) * 0.22;
-    this.smoothEnergy += (energy - this.smoothEnergy) * 0.14;
-
-    const onset = Math.max(0, bass - this.heatPulse * 0.35);
-    this.heatPulse = Math.max(this.heatPulse * Math.exp(-dt * 3.2), onset);
+    this.energy.update(bands, dt);
 
     if (reduced) return;
 
@@ -727,33 +641,33 @@ export class LavaLamp {
     const innerR = 1.55;
 
     for (const blob of this.blobs) {
-      const local = this.bandEnergy(bands, blob.bandT);
+      const local = bandAt(bands, blob.bandT);
 
       if (blob.pos.y < -2.6) {
         const idle = 0.12 * Math.sin(time * 0.35 + blob.phase);
-        blob.heat += (0.52 + idle + this.smoothBass * 1.35 + this.heatPulse * 1.8) * dt;
+        blob.heat += (0.52 + idle + this.energy.bass * 1.35 + this.energy.heatPulse * 1.8) * dt;
       } else if (blob.pos.y > 3.3) {
-        blob.heat -= (0.55 + (1 - this.smoothBass) * 0.25) * dt;
+        blob.heat -= (0.55 + (1 - this.energy.bass) * 0.25) * dt;
       }
       blob.heat -= 0.07 * dt;
       blob.heat = THREE.MathUtils.clamp(blob.heat, 0.05, 1);
 
-      const buoyancy = (blob.heat - 0.42) * (5.4 + this.smoothBass * 4.2);
+      const buoyancy = (blob.heat - 0.42) * (5.4 + this.energy.bass * 4.2);
       blob.vel.y += buoyancy * dt;
       blob.vel.y -= 0.35 * dt;
 
-      const swirl = 0.22 + this.smoothMid * 0.55;
+      const swirl = 0.22 + this.energy.mid * 0.55;
       blob.vel.x += Math.sin(time * 0.7 + blob.phase) * swirl * dt;
       blob.vel.z += Math.cos(time * 0.55 + blob.phase * 1.3) * swirl * dt;
 
-      blob.vel.y += this.heatPulse * local * 2.4 * dt;
-      blob.vel.x += (Math.sin(time * 7.0 + blob.phase) * this.smoothTreble * 0.9) * dt;
-      blob.vel.z += (Math.cos(time * 6.2 + blob.phase) * this.smoothTreble * 0.9) * dt;
+      blob.vel.y += this.energy.heatPulse * local * 2.4 * dt;
+      blob.vel.x += (Math.sin(time * 7.0 + blob.phase) * this.energy.treble * 0.9) * dt;
+      blob.vel.z += (Math.cos(time * 6.2 + blob.phase) * this.energy.treble * 0.9) * dt;
 
       blob.vel.multiplyScalar(Math.exp(-1.65 * dt));
       blob.pos.addScaledVector(blob.vel, dt);
 
-      const targetR = blob.baseRadius * (1 + local * 0.38 + this.smoothMid * 0.12 + (blob.heat - 0.4) * 0.1);
+      const targetR = blob.baseRadius * (1 + local * 0.38 + this.energy.mid * 0.12 + (blob.heat - 0.4) * 0.1);
       blob.radius += (targetR - blob.radius) * 0.12;
 
       const maxY = 4.15 - blob.radius * 0.55;
@@ -812,19 +726,19 @@ export class LavaLamp {
     this.waxMesh.updateWorldMatrix(true, false);
     this.waxMesh.worldToLocal(u.uCamPos.value);
     u.uTime.value = this.simTime;
-    u.uEnergy.value = this.smoothEnergy;
-    u.uBass.value = this.smoothBass;
-    u.uMid.value = this.smoothMid;
-    u.uTreble.value = this.smoothTreble;
-    u.uGoo.value = 0.45 + this.smoothEnergy * 0.7;
+    u.uEnergy.value = this.energy.energy;
+    u.uBass.value = this.energy.bass;
+    u.uMid.value = this.energy.mid;
+    u.uTreble.value = this.energy.treble;
+    u.uGoo.value = 0.45 + this.energy.energy * 0.7;
 
     if (settings.colorMode === 'mono') {
       u.uLiquid.value.setHex(0x2a120c);
       u.uHeaterColor.value.setHex(0xff5a1f);
     } else if (settings.colorMode === 'mood') {
-      const mood = new THREE.Color().setHSL(0.88 + this.smoothBass * 0.1, 0.55, 0.28);
+      const mood = new THREE.Color().setHSL(0.88 + this.energy.bass * 0.1, 0.55, 0.28);
       u.uLiquid.value.copy(mood).multiplyScalar(0.7);
-      u.uHeaterColor.value.setHSL(0.95 + this.smoothBass * 0.08, 0.85, 0.55);
+      u.uHeaterColor.value.setHSL(0.95 + this.energy.bass * 0.08, 0.85, 0.55);
     } else {
       u.uLiquid.value.setHex(0x241028);
       u.uHeaterColor.value.setHex(0xff6a33);
@@ -844,7 +758,7 @@ export class LavaLamp {
         continue;
       }
       blobs[i].set(blob.pos.x, blob.pos.y, blob.pos.z, blob.radius);
-      const color = this.colorForBlob(blob, settings, this.smoothEnergy);
+      const color = this.colorForBlob(blob, settings, this.energy.energy);
       color.convertSRGBToLinear();
       colors[i].copy(color);
       const w = blob.radius;
@@ -858,59 +772,25 @@ export class LavaLamp {
       this.waxLight.position.set(cx / cw, 7.2 + cy / cw * 0.15, cz / cw);
     }
     this.waxLight.color.copy(colors[0] ?? new THREE.Color(0xff66aa));
-    this.waxLight.intensity = 1.6 + this.smoothEnergy * 3.4;
-    this.heaterLight.intensity = 4.8 + this.smoothBass * 5.5 + this.heatPulse * 3.0;
+    this.waxLight.intensity = 1.6 + this.energy.energy * 3.4;
+    this.heaterLight.intensity = 4.8 + this.energy.bass * 5.5 + this.energy.heatPulse * 3.0;
   }
 
   public degradeQuality(): boolean {
-    if (this.currentPixelRatio > this.minPixelRatio + 0.05) {
-      this.currentPixelRatio = Math.max(this.minPixelRatio, this.currentPixelRatio - 0.15);
-      this.renderer.setPixelRatio(this.currentPixelRatio);
-      this.resize();
-      return true;
-    }
-    return false;
+    return this.runtime.degradeQuality();
   }
 
   public render(bands: Float32Array, settings: AppSettingsV1): void {
-    if (this.isDestroyed || this.contextLost) return;
+    if (!this.runtime.alive) return;
 
-    const now = performance.now();
-    const rawDt = this.lastTime ? Math.min(0.05, (now - this.lastTime) / 1000) : 0.016;
-    this.lastTime = now;
-
-    const speed = typeof settings.lavaSpeed === 'number' ? settings.lavaSpeed : 0.8;
-    const dt = rawDt * speed;
+    const { now, rawDt } = this.runtime.beginFrame();
+    const dt = rawDt * atmosphereSpeed(settings);
     this.simTime += dt;
 
-    const reduced = isReducedMotion(settings);
-    this.controls.autoRotate = settings.cameraAutoRotate && !reduced;
-    this.controls.autoRotateSpeed = (settings.cameraAutoRotateSpeed ?? 1.0) * 1.5;
-    this.controls.update();
-
+    const reduced = this.runtime.applyControls(settings, 1.5);
     this.updatePhysics(dt, bands, reduced);
     this.updateUniforms(settings);
-
-    const renderStart = performance.now();
-    this.renderer.render(this.scene, this.camera);
-    const renderDuration = performance.now() - renderStart;
-
-    this.emaFrameTime = this.emaFrameTime * 0.9 + renderDuration * 0.1;
-
-    // Smoothly adapt pixel ratio if GPU frame time is high, without interrupting the user
-    if (now - this.lastDprAdjustTime > 2000) {
-      if (this.emaFrameTime > 22.0 && this.currentPixelRatio > this.minPixelRatio) {
-        this.currentPixelRatio = Math.max(this.minPixelRatio, this.currentPixelRatio - 0.08);
-        this.renderer.setPixelRatio(this.currentPixelRatio);
-        this.resize();
-        this.lastDprAdjustTime = now;
-      } else if (this.emaFrameTime < 12.0 && this.currentPixelRatio < this.maxPixelRatio) {
-        this.currentPixelRatio = Math.min(this.maxPixelRatio, this.currentPixelRatio + 0.04);
-        this.renderer.setPixelRatio(this.currentPixelRatio);
-        this.resize();
-        this.lastDprAdjustTime = now;
-      }
-    }
+    this.runtime.renderScene(now);
   }
 
   private frameLamp(): void {
@@ -939,44 +819,11 @@ export class LavaLamp {
     this.controls.maxDistance = dist * 2.5;
   }
 
-  private resize(): void {
-    if (this.isDestroyed || this.contextLost) return;
-    const width = this.container.clientWidth || 800;
-    const height = this.container.clientHeight || 400;
-    this.camera.aspect = width / height;
-    this.frameLamp();
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
-  }
-
   public destroy(): void {
-    if (this.isDestroyed) return;
-    this.isDestroyed = true;
-    this.resizeObserver.disconnect();
-    this.controls.dispose();
-    this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost);
-    this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored);
-
-    this.scene.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (mesh.geometry) mesh.geometry.dispose();
-      const material = mesh.material;
-      if (Array.isArray(material)) {
-        material.forEach((item) => item.dispose());
-      } else if (material) {
-        material.dispose();
-      }
-    });
-
+    if (this.runtime.isDestroyed) return;
     this.brassMaps.map.dispose();
     this.brassMaps.roughness.dispose();
-    this.envMap?.dispose();
-    this.pmrem.dispose();
-    this.scene.clear();
-    this.renderer.dispose();
-
-    if (this.renderer.domElement.parentElement) {
-      this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
-    }
+    this.runtime.disposeSceneGraph();
+    this.runtime.destroy();
   }
 }

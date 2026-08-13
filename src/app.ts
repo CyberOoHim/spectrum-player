@@ -4,7 +4,8 @@ import { loadSession, saveSession } from './storage/session';
 import { getTrackData } from './storage/library';
 import { Spectrum3D } from './viz/spectrum-3d';
 import { Spectrum2D } from './viz/spectrum-2d';
-import { LavaLamp } from './viz/lava-lamp';
+import { SceneVisualizer } from './viz/scene';
+import { createAtmosphereScene, isAtmosphereMode } from './viz/scenes/registry';
 import { UIControls } from './ui/controls';
 
 const DEMO_TRACK: PlayerTrackInfo = {
@@ -50,8 +51,13 @@ export function boot(): void {
 
   let viz3d: Spectrum3D | null = null;
   let viz2d: Spectrum2D | null = null;
-  let vizLava: LavaLamp | null = null;
+  let vizScene: SceneVisualizer | null = null;
   let idleBands = new Float32Array(settings.barCount);
+
+  const clearAtmosphereStage = () => {
+    container.classList.remove('atmosphere-stage', 'lava-stage');
+    delete container.dataset.scene;
+  };
 
   const destroyVisualizers = () => {
     if (viz3d) {
@@ -62,11 +68,11 @@ export function boot(): void {
       viz2d.destroy();
       viz2d = null;
     }
-    if (vizLava) {
-      vizLava.destroy();
-      vizLava = null;
+    if (vizScene) {
+      vizScene.destroy();
+      vizScene = null;
     }
-    container.classList.remove('lava-stage');
+    clearAtmosphereStage();
   };
 
   const fallBackTo2D = (message: string) => {
@@ -74,11 +80,11 @@ export function boot(): void {
       viz3d.destroy();
       viz3d = null;
     }
-    if (vizLava) {
-      vizLava.destroy();
-      vizLava = null;
+    if (vizScene) {
+      vizScene.destroy();
+      vizScene = null;
     }
-    container.classList.remove('lava-stage');
+    clearAtmosphereStage();
     if (!viz2d) {
       try {
         viz2d = new Spectrum2D(container);
@@ -109,14 +115,15 @@ export function boot(): void {
       return;
     }
 
-    if (settings.visualizerMode === 'lava') {
-      container.classList.add('lava-stage');
+    if (isAtmosphereMode(settings.visualizerMode)) {
+      container.classList.add('atmosphere-stage');
+      container.dataset.scene = settings.visualizerMode;
       try {
-        vizLava = new LavaLamp(container, {
+        vizScene = createAtmosphereScene(settings.visualizerMode, container, {
           onContextLost: () => fallBackTo2D('WebGL unavailable. Using 2D spectrum.'),
         });
       } catch (err) {
-        console.warn('Lava lamp initialization failed, falling back to 2D canvas spectrum:', err);
+        console.warn('Atmosphere scene initialization failed, falling back to 2D canvas spectrum:', err);
         fallBackTo2D('WebGL unavailable. Using 2D spectrum.');
       }
       return;
@@ -148,11 +155,10 @@ export function boot(): void {
   };
 
   const degradePerformance = () => {
-    // If lava lamp is active, degrade internal dynamic resolution first before forcing mode change
-    if (settings.visualizerMode === 'lava' && vizLava) {
-      const reducedInternal = vizLava.degradeQuality();
+    if (isAtmosphereMode(settings.visualizerMode) && vizScene) {
+      const reducedInternal = vizScene.degradeQuality();
       if (reducedInternal) {
-        setStatusMessage('Performance: reduced lava lamp resolution.');
+        setStatusMessage('Performance: reduced atmosphere quality.');
         return;
       }
     }
@@ -217,8 +223,8 @@ export function boot(): void {
     const bands = player.isPlaying()
       ? player.getBands(settings.barCount, settings.sensitivity)
       : idleBands;
-    if (vizLava) {
-      vizLava.render(bands, settings);
+    if (vizScene) {
+      vizScene.render(bands, settings);
     } else if (viz3d) {
       viz3d.render(bands, settings);
     } else if (viz2d) {

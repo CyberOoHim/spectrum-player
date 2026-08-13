@@ -208,6 +208,12 @@ select:focus-visible {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
+optgroup {
+  color: var(--text-muted);
+  font-weight: 700;
+  font-style: normal;
+}
+
 .select-arrow {
   position: absolute;
   right: 0.6rem;
@@ -245,11 +251,19 @@ select:focus-visible {
   transition: opacity 0.5s ease;
 }
 
+#canvas-host.atmosphere-stage,
 #canvas-host.lava-stage {
   background:
     radial-gradient(70% 50% at 50% 100%, #3b1b17 0%, transparent 60%),
     radial-gradient(42% 36% at 50% 48%, #1c0e18 0%, transparent 70%),
     linear-gradient(180deg, #10080f 0%, #080408 100%);
+}
+
+#canvas-host.atmosphere-stage[data-scene="hearth"] {
+  background:
+    radial-gradient(62% 48% at 50% 88%, #5a220e 0%, transparent 58%),
+    radial-gradient(38% 32% at 50% 62%, #2a1208 0%, transparent 70%),
+    linear-gradient(180deg, #100806 0%, #070403 100%);
 }
 
 .canvas-floating-actions {
