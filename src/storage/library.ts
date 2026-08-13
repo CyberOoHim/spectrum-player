@@ -123,6 +123,18 @@ export async function deleteTrack(id: string): Promise<void> {
   });
 }
 
+export async function clearAllTracks(): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(INDEXEDDB_STORE_TRACKS, 'readwrite');
+    const store = tx.objectStore(INDEXEDDB_STORE_TRACKS);
+    const req = store.clear();
+
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error || new Error('Failed to clear tracks from IndexedDB'));
+  });
+}
+
 export async function getStorageEstimate(): Promise<{ usedMB: number; totalMB: number } | null> {
   if (navigator.storage && navigator.storage.estimate) {
     try {

@@ -5,7 +5,7 @@ export interface AppSettingsV1 {
   volume: number;
   muted: boolean;
   loop: boolean;
-  visualizerMode: 'bars' | 'radial' | 'particles' | '2d';
+  visualizerMode: 'bars' | 'radial' | 'particles' | '2d' | 'orb';
   colorMode: 'spectrum' | 'mono' | 'mood';
   sensitivity: number;
   fftSize: 512 | 1024 | 2048;
@@ -54,7 +54,7 @@ export function loadSettings(): AppSettingsV1 {
     const volume = typeof parsed.volume === 'number' ? clamp(parsed.volume, 0, 1) : DEFAULT_SETTINGS.volume;
     const muted = typeof parsed.muted === 'boolean' ? parsed.muted : DEFAULT_SETTINGS.muted;
     const loop = typeof parsed.loop === 'boolean' ? parsed.loop : DEFAULT_SETTINGS.loop;
-    const visualizerMode = ['bars', 'radial', 'particles', '2d'].includes(parsed.visualizerMode)
+    const visualizerMode = ['bars', 'radial', 'particles', '2d', 'orb'].includes(parsed.visualizerMode)
       ? parsed.visualizerMode
       : DEFAULT_SETTINGS.visualizerMode;
     const colorMode = ['spectrum', 'mono', 'mood'].includes(parsed.colorMode)

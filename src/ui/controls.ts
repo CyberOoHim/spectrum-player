@@ -1,6 +1,6 @@
 import { AudioPlayer, PlayerTrackInfo } from '../audio/player';
-import { AppSettingsV1, saveSettings } from '../storage/settings';
-import { saveTrack, getAllTrackMetadata, deleteTrack, getTrackData, getStorageEstimate, TrackMetadata } from '../storage/library';
+import { AppSettingsV1, saveSettings, resetSettings } from '../storage/settings';
+import { saveTrack, getAllTrackMetadata, deleteTrack, getTrackData, getStorageEstimate, clearAllTracks, TrackMetadata } from '../storage/library';
 
 export interface UIControlsConfig {
   player: AudioPlayer;
@@ -15,6 +15,8 @@ export class UIControls {
 
   // DOM Elements
   private playBtn: HTMLButtonElement;
+  private prevBtn: HTMLButtonElement | null;
+  private nextBtn: HTMLButtonElement | null;
   private seekInput: HTMLInputElement;
   private timeDisplay: HTMLElement;
   private volumeInput: HTMLInputElement;
@@ -28,6 +30,13 @@ export class UIControls {
   private deleteTrackBtn: HTMLButtonElement;
   private storageInfo: HTMLElement;
 
+  // Tools Elements
+  private exportSettingsBtn: HTMLButtonElement | null;
+  private importSettingsBtn: HTMLButtonElement | null;
+  private importSettingsFile: HTMLInputElement | null;
+  private resetSettingsBtn: HTMLButtonElement | null;
+  private clearLibraryBtn: HTMLButtonElement | null;
+
   private currentTrackMetadataList: TrackMetadata[] = [];
   private isUserSeeking: boolean = false;
 
@@ -36,6 +45,8 @@ export class UIControls {
 
     // Element bindings
     this.playBtn = document.querySelector<HTMLButtonElement>('#play')!;
+    this.prevBtn = document.querySelector<HTMLButtonElement>('#prev-track');
+    this.nextBtn = document.querySelector<HTMLButtonElement>('#next-track');
     this.seekInput = document.querySelector<HTMLInputElement>('#seek')!;
     this.timeDisplay = document.querySelector<HTMLElement>('#time-display')!;
     this.volumeInput = document.querySelector<HTMLInputElement>('#volume')!;
@@ -48,6 +59,12 @@ export class UIControls {
     this.librarySelect = document.querySelector<HTMLSelectElement>('#library-select')!;
     this.deleteTrackBtn = document.querySelector<HTMLButtonElement>('#delete-track')!;
     this.storageInfo = document.querySelector<HTMLElement>('#storage-info')!;
+
+    this.exportSettingsBtn = document.querySelector<HTMLButtonElement>('#export-settings');
+    this.importSettingsBtn = document.querySelector<HTMLButtonElement>('#import-settings-btn');
+    this.importSettingsFile = document.querySelector<HTMLInputElement>('#import-settings-file');
+    this.resetSettingsBtn = document.querySelector<HTMLButtonElement>('#reset-settings');
+    this.clearLibraryBtn = document.querySelector<HTMLButtonElement>('#clear-library');
 
     this.initUIValues();
     this.bindEvents();
@@ -281,6 +298,88 @@ export class UIControls {
       }
     });
 
+    // Prev & Next Buttons
+    if (this.prevBtn) {
+      this.prevBtn.addEventListener('click', () => this.playPrevTrack());
+    }
+    if (this.nextBtn) {
+      this.nextBtn.addEventListener('click', () => this.playNextTrack());
+    }
+
+    // Export Settings JSON
+    if (this.exportSettingsBtn) {
+      this.exportSettingsBtn.addEventListener('click', () => {
+        const jsonStr = JSON.stringify(this.config.settings, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'spectrum-player-settings.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        this.config.setStatusMessage('Exported settings to spectrum-player-settings.json');
+      });
+    }
+
+    // Import Settings JSON
+    if (this.importSettingsBtn && this.importSettingsFile) {
+      this.importSettingsBtn.addEventListener('click', () => {
+        this.importSettingsFile?.click();
+      });
+
+      this.importSettingsFile.addEventListener('change', async () => {
+        const file = this.importSettingsFile?.files?.[0];
+        if (!file) return;
+
+        try {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          const updated = saveSettings(parsed);
+          this.config.settings = updated;
+          this.initUIValues();
+          this.config.onSettingsChange(updated);
+          this.config.setStatusMessage('Settings imported successfully.');
+        } catch (err) {
+          this.config.setStatusMessage('Invalid settings JSON file.', true);
+        } finally {
+          if (this.importSettingsFile) {
+            this.importSettingsFile.value = '';
+          }
+        }
+      });
+    }
+
+    // Reset Settings
+    if (this.resetSettingsBtn) {
+      this.resetSettingsBtn.addEventListener('click', () => {
+        if (confirm('Reset all settings to defaults?')) {
+          const defaults = resetSettings();
+          this.config.settings = defaults;
+          this.initUIValues();
+          this.config.onSettingsChange(defaults);
+          this.config.setStatusMessage('Settings reset to defaults.');
+        }
+      });
+    }
+
+    // Clear Library
+    if (this.clearLibraryBtn) {
+      this.clearLibraryBtn.addEventListener('click', async () => {
+        if (confirm('Clear all imported audio files from your library?')) {
+          try {
+            await clearAllTracks();
+            this.config.setStatusMessage('Audio library cleared.');
+            await this.refreshLibrary();
+            // Switch to demo
+            this.librarySelect.value = 'demo';
+            this.librarySelect.dispatchEvent(new Event('change'));
+          } catch (err) {
+            this.config.setStatusMessage('Failed to clear library.', true);
+          }
+        }
+      });
+    }
+
     // Player State Updates Listener
     this.config.player.subscribe(({ isPlaying, currentTime, duration, title, error }) => {
       this.playBtn.textContent = isPlaying ? 'Pause' : 'Play';
@@ -300,6 +399,12 @@ export class UIControls {
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({ title });
         navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+        try {
+          navigator.mediaSession.setActionHandler('previoustrack', () => this.playPrevTrack());
+          navigator.mediaSession.setActionHandler('nexttrack', () => this.playNextTrack());
+        } catch {
+          // Action handlers optional
+        }
       }
     });
   }
@@ -388,7 +493,35 @@ export class UIControls {
           e.preventDefault();
           if (this.loopBtn) this.loopBtn.click();
           break;
+        case 'n':
+        case 'N':
+          e.preventDefault();
+          this.playNextTrack();
+          break;
+        case 'p':
+        case 'P':
+          e.preventDefault();
+          this.playPrevTrack();
+          break;
       }
     });
+  }
+
+  public playNextTrack(): void {
+    const options = Array.from(this.librarySelect.options);
+    if (options.length <= 1) return;
+    const currentIndex = this.librarySelect.selectedIndex;
+    const nextIndex = (currentIndex + 1) % options.length;
+    this.librarySelect.selectedIndex = nextIndex;
+    this.librarySelect.dispatchEvent(new Event('change'));
+  }
+
+  public playPrevTrack(): void {
+    const options = Array.from(this.librarySelect.options);
+    if (options.length <= 1) return;
+    const currentIndex = this.librarySelect.selectedIndex;
+    const prevIndex = (currentIndex - 1 + options.length) % options.length;
+    this.librarySelect.selectedIndex = prevIndex;
+    this.librarySelect.dispatchEvent(new Event('change'));
   }
 }

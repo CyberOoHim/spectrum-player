@@ -21,6 +21,12 @@ export class Spectrum3D {
   private particlePositions: Float32Array | null = null;
   private particleOriginals: Float32Array | null = null;
 
+  // Shader / Energy Orb Mode
+  private orbGroup: THREE.Group | null = null;
+  private orbCoreMesh: THREE.Mesh | null = null;
+  private orbWireframeMesh: THREE.Mesh | null = null;
+  private orbOriginalPositions: Float32Array | null = null;
+
   private currentBarCount: number = 0;
   private isDestroyed: boolean = false;
 
@@ -102,6 +108,18 @@ export class Spectrum3D {
       (this.particleSystem.material as THREE.Material).dispose();
       this.particleSystem = null;
     }
+    if (this.orbGroup) {
+      this.scene.remove(this.orbGroup);
+      if (this.orbCoreMesh) {
+        this.orbCoreMesh.geometry.dispose();
+        (this.orbCoreMesh.material as THREE.Material).dispose();
+      }
+      if (this.orbWireframeMesh) {
+        this.orbWireframeMesh.geometry.dispose();
+        (this.orbWireframeMesh.material as THREE.Material).dispose();
+      }
+      this.orbGroup = null;
+    }
 
     this.currentBarCount = barCount;
 
@@ -155,6 +173,34 @@ export class Spectrum3D {
     this.particlePositions = positions;
     this.particleOriginals = originals;
     this.scene.add(this.particleSystem);
+
+    // 3. Setup Shader / Energy Orb
+    this.orbGroup = new THREE.Group();
+    const orbCoreGeom = new THREE.IcosahedronGeometry(4.5, 4);
+    const orbCoreMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      roughness: 0.1,
+      metalness: 0.9,
+      flatShading: true,
+    });
+    this.orbCoreMesh = new THREE.Mesh(orbCoreGeom, orbCoreMat);
+    this.orbGroup.add(this.orbCoreMesh);
+
+    // Save original position attributes for vertex displacement
+    const posAttr = orbCoreGeom.attributes.position;
+    this.orbOriginalPositions = new Float32Array(posAttr.array);
+
+    const orbWireGeom = new THREE.IcosahedronGeometry(5.4, 2);
+    const orbWireMat = new THREE.MeshBasicMaterial({
+      color: 0xc084fc,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.5,
+    });
+    this.orbWireframeMesh = new THREE.Mesh(orbWireGeom, orbWireMat);
+    this.orbGroup.add(this.orbWireframeMesh);
+
+    this.scene.add(this.orbGroup);
   }
 
   public render(bands: Float32Array, settings: AppSettingsV1): void {
@@ -179,6 +225,7 @@ export class Spectrum3D {
     if (this.instancedMeshBars) this.instancedMeshBars.visible = mode === 'bars';
     if (this.instancedMeshRadial) this.instancedMeshRadial.visible = mode === 'radial';
     if (this.particleSystem) this.particleSystem.visible = mode === 'particles';
+    if (this.orbGroup) this.orbGroup.visible = mode === 'orb';
 
     // 1. Render 3D Bars Mode
     if (mode === 'bars' && this.instancedMeshBars) {
@@ -259,6 +306,61 @@ export class Spectrum3D {
       }
 
       this.particleSystem.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // 4. Render 3D Shader / Energy Orb Mode
+    if (mode === 'orb' && this.orbGroup && this.orbCoreMesh && this.orbOriginalPositions) {
+      let bass = 0, mid = 0, treble = 0;
+      const third = Math.floor(barCount / 3);
+
+      for (let i = 0; i < barCount; i++) {
+        if (i < third) bass += bands[i];
+        else if (i < third * 2) mid += bands[i];
+        else treble += bands[i];
+      }
+      bass = bass / Math.max(1, third);
+      mid = mid / Math.max(1, third);
+      treble = treble / Math.max(1, third);
+
+      const time = performance.now() * 0.0015;
+      const posAttr = this.orbCoreMesh.geometry.attributes.position;
+      const posArray = posAttr.array as Float32Array;
+      const count = posArray.length / 3;
+
+      for (let i = 0; i < count; i++) {
+        const ox = this.orbOriginalPositions[i * 3];
+        const oy = this.orbOriginalPositions[i * 3 + 1];
+        const oz = this.orbOriginalPositions[i * 3 + 2];
+
+        const bandIdx = i % barCount;
+        const energy = bands[bandIdx];
+        const noise = Math.sin(ox * 2 + time * 3) * Math.cos(oy * 2 + time * 2) * (bass * 1.5 + energy);
+
+        const factor = 1 + noise * 0.2 + energy * 0.3;
+
+        posArray[i * 3] = ox * factor;
+        posArray[i * 3 + 1] = oy * factor;
+        posArray[i * 3 + 2] = oz * factor;
+      }
+      posAttr.needsUpdate = true;
+
+      // Rotate wireframe sphere
+      if (this.orbWireframeMesh) {
+        this.orbWireframeMesh.rotation.y = time * 0.5;
+        this.orbWireframeMesh.rotation.x = time * 0.3;
+        const wireScale = 1 + treble * 0.4 + Math.sin(time * 4) * 0.05;
+        this.orbWireframeMesh.scale.set(wireScale, wireScale, wireScale);
+      }
+
+      // Color updates for Orb Core
+      const mat = this.orbCoreMesh.material as THREE.MeshStandardMaterial;
+      if (settings.colorMode === 'mono') {
+        mat.color.setHex(0x38bdf8);
+      } else if (settings.colorMode === 'mood') {
+        mat.color.setHSL(0.75 + bass * 0.2, 0.9, 0.55);
+      } else {
+        mat.color.setHSL((time * 0.1 + bass * 0.5) % 1.0, 0.85, 0.5);
+      }
     }
 
     this.renderer.render(this.scene, this.camera);
