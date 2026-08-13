@@ -38,7 +38,7 @@ A high-performance standalone web audio player and interactive 3D frequency spec
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) v18.18+ (CI uses Node 22)
+- [Node.js](https://nodejs.org/) v18.18+ (CI and local development use Node 20 LTS via `.nvmrc`)
 - [pnpm](https://pnpm.io/) package manager
 
 ### Development
