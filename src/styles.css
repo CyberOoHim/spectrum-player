@@ -211,6 +211,14 @@ select:focus-visible {
   gap: 0.55rem;
   color: var(--muted);
   font-size: 0.82rem;
+  transition: opacity 0.2s ease;
+}
+
+.control.disabled,
+.control input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 input[type="range"] {

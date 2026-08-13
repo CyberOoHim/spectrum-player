@@ -861,7 +861,7 @@ export class LavaLamp {
 
     const reduced = isReducedMotion(settings);
     this.controls.autoRotate = settings.cameraAutoRotate && !reduced;
-    this.controls.autoRotateSpeed = 1.5;
+    this.controls.autoRotateSpeed = (settings.cameraAutoRotateSpeed ?? 1.0) * 1.5;
     this.controls.update();
 
     this.updatePhysics(dt, bands, reduced);

@@ -12,6 +12,7 @@ export interface AppSettingsV1 {
   barCount: number;
   reducedMotionOverride: 'system' | 'on' | 'off';
   cameraAutoRotate: boolean;
+  cameraAutoRotateSpeed: number;
   lavaSpeed: number;
 }
 
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: AppSettingsV1 = {
   barCount: 64,
   reducedMotionOverride: 'system',
   cameraAutoRotate: true,
+  cameraAutoRotateSpeed: 1.0,
   lavaSpeed: 0.8,
 };
 
@@ -72,6 +74,7 @@ export function normalizeSettings(input: unknown): AppSettingsV1 {
     ? (parsed.reducedMotionOverride as AppSettingsV1['reducedMotionOverride'])
     : DEFAULT_SETTINGS.reducedMotionOverride;
   const cameraAutoRotate = typeof parsed.cameraAutoRotate === 'boolean' ? parsed.cameraAutoRotate : DEFAULT_SETTINGS.cameraAutoRotate;
+  const cameraAutoRotateSpeed = typeof parsed.cameraAutoRotateSpeed === 'number' ? clamp(parsed.cameraAutoRotateSpeed, 0.1, 3.0) : DEFAULT_SETTINGS.cameraAutoRotateSpeed;
   const lavaSpeed = typeof parsed.lavaSpeed === 'number' ? clamp(parsed.lavaSpeed, 0.1, 1.5) : DEFAULT_SETTINGS.lavaSpeed;
 
   return {
@@ -86,6 +89,7 @@ export function normalizeSettings(input: unknown): AppSettingsV1 {
     barCount,
     reducedMotionOverride,
     cameraAutoRotate,
+    cameraAutoRotateSpeed,
     lavaSpeed,
   };
 }

@@ -44,6 +44,8 @@ export class UIControls {
   private lavaSpeedControl: HTMLElement | null;
   private reducedMotionSelect: HTMLSelectElement | null;
   private autoRotateInput: HTMLInputElement | null;
+  private autoRotateSpeedInput: HTMLInputElement | null;
+  private autoRotateSpeedControl: HTMLElement | null;
   private librarySelect: HTMLSelectElement;
   private deleteTrackBtn: HTMLButtonElement;
   private storageInfo: HTMLElement;
@@ -78,6 +80,8 @@ export class UIControls {
     this.lavaSpeedControl = document.querySelector<HTMLElement>('#lava-speed-control');
     this.reducedMotionSelect = document.querySelector<HTMLSelectElement>('#reduced-motion');
     this.autoRotateInput = document.querySelector<HTMLInputElement>('#auto-rotate');
+    this.autoRotateSpeedInput = document.querySelector<HTMLInputElement>('#auto-rotate-speed');
+    this.autoRotateSpeedControl = document.querySelector<HTMLElement>('#auto-rotate-speed-control');
     this.librarySelect = document.querySelector<HTMLSelectElement>('#library-select')!;
     this.deleteTrackBtn = document.querySelector<HTMLButtonElement>('#delete-track')!;
     this.storageInfo = document.querySelector<HTMLElement>('#storage-info')!;
@@ -140,6 +144,13 @@ export class UIControls {
     }
     if (this.reducedMotionSelect) this.reducedMotionSelect.value = s.reducedMotionOverride;
     if (this.autoRotateInput) this.autoRotateInput.checked = s.cameraAutoRotate;
+    if (this.autoRotateSpeedInput) {
+      this.autoRotateSpeedInput.value = (s.cameraAutoRotateSpeed ?? 1.0).toString();
+      this.autoRotateSpeedInput.disabled = !s.cameraAutoRotate;
+    }
+    if (this.autoRotateSpeedControl) {
+      this.autoRotateSpeedControl.classList.toggle('disabled', !s.cameraAutoRotate);
+    }
   }
 
   private endSeek(): void {
@@ -242,7 +253,21 @@ export class UIControls {
 
     if (this.autoRotateInput) {
       this.autoRotateInput.addEventListener('change', () => {
-        this.persistSettings({ cameraAutoRotate: this.autoRotateInput!.checked });
+        const isChecked = this.autoRotateInput!.checked;
+        if (this.autoRotateSpeedInput) {
+          this.autoRotateSpeedInput.disabled = !isChecked;
+        }
+        if (this.autoRotateSpeedControl) {
+          this.autoRotateSpeedControl.classList.toggle('disabled', !isChecked);
+        }
+        this.persistSettings({ cameraAutoRotate: isChecked });
+      });
+    }
+
+    if (this.autoRotateSpeedInput) {
+      this.autoRotateSpeedInput.addEventListener('input', () => {
+        const cameraAutoRotateSpeed = parseFloat(this.autoRotateSpeedInput!.value);
+        this.persistSettings({ cameraAutoRotateSpeed });
       });
     }
 

@@ -63,6 +63,20 @@ describe('Settings Storage Module', () => {
     expect(settings.lavaSpeed).toBe(1.2);
   });
 
+  it('persists cameraAutoRotateSpeed and clamps bounds', () => {
+    saveSettings({ cameraAutoRotateSpeed: 2.5 });
+    let settings = loadSettings();
+    expect(settings.cameraAutoRotateSpeed).toBe(2.5);
+
+    saveSettings({ cameraAutoRotateSpeed: 10.0 });
+    settings = loadSettings();
+    expect(settings.cameraAutoRotateSpeed).toBe(3.0);
+
+    saveSettings({ cameraAutoRotateSpeed: 0.01 });
+    settings = loadSettings();
+    expect(settings.cameraAutoRotateSpeed).toBe(0.1);
+  });
+
   it('falls back to bars for unknown visualizer modes', () => {
     localStorage.setItem(
       SETTINGS_STORAGE_KEY,

@@ -244,7 +244,7 @@ export class Spectrum3D {
       reduced && (requestedMode === 'particles' || requestedMode === 'orb') ? 'bars' : requestedMode;
 
     this.controls.autoRotate = settings.cameraAutoRotate && !reduced;
-    this.controls.autoRotateSpeed = 1.2;
+    this.controls.autoRotateSpeed = (settings.cameraAutoRotateSpeed ?? 1.0) * 1.2;
     this.controls.update();
 
     if (this.instancedMeshBars) this.instancedMeshBars.visible = mode === 'bars';
