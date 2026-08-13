@@ -31,8 +31,13 @@ class MockLocalStorage {
 }
 
 if (typeof globalThis.localStorage === 'undefined') {
-  (globalThis as unknown as { localStorage: MockLocalStorage }).localStorage = new MockLocalStorage();
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: new MockLocalStorage(),
+    writable: true,
+    configurable: true,
+  });
 }
+
 
 describe('Settings Storage Module', () => {
   beforeEach(() => {

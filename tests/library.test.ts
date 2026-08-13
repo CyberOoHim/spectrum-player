@@ -1,11 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { isSupportedAudioFile } from '../src/ui/controls';
 import {
-  saveTrack,
   getAllTrackMetadata,
   getTrackData,
-  deleteTrack,
-  clearAllTracks,
   getStorageEstimate,
 } from '../src/storage/library';
 
@@ -51,31 +48,29 @@ describe('Audio File Validation', () => {
 });
 
 describe('Storage Estimate Helper', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('returns null when storage estimate API is unavailable', async () => {
-    const originalNavigator = globalThis.navigator;
-    (globalThis as { navigator?: unknown }).navigator = undefined;
+    vi.stubGlobal('navigator', undefined);
 
     const result = await getStorageEstimate();
     expect(result).toBeNull();
-
-    (globalThis as { navigator?: unknown }).navigator = originalNavigator;
   });
 
   it('calculates MB correctly when storage estimate API is present', async () => {
-    const originalNavigator = globalThis.navigator;
     const mockEstimate = vi.fn().mockResolvedValue({
       usage: 10 * 1024 * 1024, // 10 MB
       quota: 100 * 1024 * 1024, // 100 MB
     });
 
-    (globalThis as { navigator?: unknown }).navigator = {
+    vi.stubGlobal('navigator', {
       storage: { estimate: mockEstimate },
-    };
+    });
 
     const result = await getStorageEstimate();
     expect(result).toEqual({ usedMB: 10, totalMB: 100 });
-
-    (globalThis as { navigator?: unknown }).navigator = originalNavigator;
   });
 });
 
@@ -90,3 +85,4 @@ describe('IndexedDB Graceful Degradation in Non-Browser Environments', () => {
     expect(track).toBeNull();
   });
 });
+
