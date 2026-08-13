@@ -38,11 +38,12 @@ describe('Settings Storage Module', () => {
   });
 
   it('saves and loads custom settings cleanly', () => {
-    saveSettings({ volume: 0.5, visualizerMode: 'particles', sensitivity: 1.5 });
+    saveSettings({ volume: 0.5, visualizerMode: 'particles', sensitivity: 1.5, loop: true });
     const settings = loadSettings();
     expect(settings.volume).toBe(0.5);
     expect(settings.visualizerMode).toBe('particles');
     expect(settings.sensitivity).toBe(1.5);
+    expect(settings.loop).toBe(true);
     expect(settings.version).toBe(1);
   });
 

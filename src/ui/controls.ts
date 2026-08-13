@@ -19,6 +19,7 @@ export class UIControls {
   private timeDisplay: HTMLElement;
   private volumeInput: HTMLInputElement;
   private muteBtn: HTMLButtonElement;
+  private loopBtn: HTMLButtonElement;
   private fileInput: HTMLInputElement;
   private modeSelect: HTMLSelectElement;
   private colorSelect: HTMLSelectElement;
@@ -39,6 +40,7 @@ export class UIControls {
     this.timeDisplay = document.querySelector<HTMLElement>('#time-display')!;
     this.volumeInput = document.querySelector<HTMLInputElement>('#volume')!;
     this.muteBtn = document.querySelector<HTMLButtonElement>('#mute')!;
+    this.loopBtn = document.querySelector<HTMLButtonElement>('#loop')!;
     this.fileInput = document.querySelector<HTMLInputElement>('#file')!;
     this.modeSelect = document.querySelector<HTMLSelectElement>('#mode-select')!;
     this.colorSelect = document.querySelector<HTMLSelectElement>('#color-select')!;
@@ -58,6 +60,12 @@ export class UIControls {
     this.volumeInput.value = s.volume.toString();
     this.volumeInput.disabled = false;
     this.muteBtn.textContent = s.muted ? 'Unmute' : 'Mute';
+    this.muteBtn.setAttribute('aria-pressed', s.muted ? 'true' : 'false');
+    if (this.loopBtn) {
+      this.loopBtn.textContent = s.loop ? 'Loop: On' : 'Loop: Off';
+      this.loopBtn.setAttribute('aria-pressed', s.loop ? 'true' : 'false');
+    }
+    this.config.player.setLoop(s.loop);
     this.modeSelect.value = s.visualizerMode;
     if (this.colorSelect) this.colorSelect.value = s.colorMode;
     if (this.sensitivityInput) this.sensitivityInput.value = s.sensitivity.toString();
@@ -94,9 +102,21 @@ export class UIControls {
       const newMuted = !this.config.settings.muted;
       this.config.player.setMuted(newMuted);
       this.muteBtn.textContent = newMuted ? 'Unmute' : 'Mute';
+      this.muteBtn.setAttribute('aria-pressed', newMuted ? 'true' : 'false');
       const updated = saveSettings({ muted: newMuted });
       this.config.onSettingsChange(updated);
     });
+
+    if (this.loopBtn) {
+      this.loopBtn.addEventListener('click', () => {
+        const newLoop = !this.config.settings.loop;
+        this.config.player.setLoop(newLoop);
+        this.loopBtn.textContent = newLoop ? 'Loop: On' : 'Loop: Off';
+        this.loopBtn.setAttribute('aria-pressed', newLoop ? 'true' : 'false');
+        const updated = saveSettings({ loop: newLoop });
+        this.config.onSettingsChange(updated);
+      });
+    }
 
     // Mode Selector
     this.modeSelect.addEventListener('change', () => {
@@ -362,6 +382,11 @@ export class UIControls {
         case 'M':
           e.preventDefault();
           this.muteBtn.click();
+          break;
+        case 'l':
+        case 'L':
+          e.preventDefault();
+          if (this.loopBtn) this.loopBtn.click();
           break;
       }
     });

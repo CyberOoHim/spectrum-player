@@ -4,6 +4,7 @@ export interface AppSettingsV1 {
   version: 1;
   volume: number;
   muted: boolean;
+  loop: boolean;
   visualizerMode: 'bars' | 'radial' | 'particles' | '2d';
   colorMode: 'spectrum' | 'mono' | 'mood';
   sensitivity: number;
@@ -17,6 +18,7 @@ export const DEFAULT_SETTINGS: AppSettingsV1 = {
   version: 1,
   volume: 0.8,
   muted: false,
+  loop: false,
   visualizerMode: 'bars',
   colorMode: 'spectrum',
   sensitivity: 1.0,
@@ -51,6 +53,7 @@ export function loadSettings(): AppSettingsV1 {
 
     const volume = typeof parsed.volume === 'number' ? clamp(parsed.volume, 0, 1) : DEFAULT_SETTINGS.volume;
     const muted = typeof parsed.muted === 'boolean' ? parsed.muted : DEFAULT_SETTINGS.muted;
+    const loop = typeof parsed.loop === 'boolean' ? parsed.loop : DEFAULT_SETTINGS.loop;
     const visualizerMode = ['bars', 'radial', 'particles', '2d'].includes(parsed.visualizerMode)
       ? parsed.visualizerMode
       : DEFAULT_SETTINGS.visualizerMode;
@@ -69,6 +72,7 @@ export function loadSettings(): AppSettingsV1 {
       version: 1,
       volume,
       muted,
+      loop,
       visualizerMode,
       colorMode,
       sensitivity,

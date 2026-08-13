@@ -37,6 +37,7 @@ export class AudioPlayer {
     this.audio.crossOrigin = 'anonymous';
 
     this.setupAudioListeners();
+    this.setupMediaSessionHandlers();
   }
 
   private setupAudioListeners(): void {
@@ -49,6 +50,41 @@ export class AudioPlayer {
       const errMessage = this.audio.error?.message || 'Error loading or playing audio file.';
       this.notifyState(errMessage);
     });
+  }
+
+  private setupMediaSessionHandlers(): void {
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.setActionHandler('play', () => this.play());
+        navigator.mediaSession.setActionHandler('pause', () => this.pause());
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (details.seekTime !== undefined && details.seekTime !== null) {
+            this.seek(details.seekTime);
+          }
+        });
+        navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+          this.seek(this.getCurrentTime() - (details.seekOffset || 5));
+        });
+        navigator.mediaSession.setActionHandler('seekforward', (details) => {
+          this.seek(this.getCurrentTime() + (details.seekOffset || 5));
+        });
+        navigator.mediaSession.setActionHandler('stop', () => {
+          this.pause();
+          this.seek(0);
+        });
+      } catch (err) {
+        console.warn('MediaSession action handler registration failed:', err);
+      }
+    }
+  }
+
+  public setLoop(loop: boolean): void {
+    this.audio.loop = loop;
+    this.notifyState();
+  }
+
+  public isLooping(): boolean {
+    return this.audio.loop;
   }
 
   public ensureAudioContext(): void {
@@ -171,14 +207,34 @@ export class AudioPlayer {
   }
 
   private notifyState(error?: string): void {
+    const isPlaying = this.isPlaying();
+    const currentTime = this.getCurrentTime();
+    const duration = this.getDuration();
+    const title = this.currentTrackInfo?.title || 'No Track';
+
     const payload = {
-      isPlaying: this.isPlaying(),
-      currentTime: this.getCurrentTime(),
-      duration: this.getDuration(),
-      title: this.currentTrackInfo?.title || 'No Track',
+      isPlaying,
+      currentTime,
+      duration,
+      title,
       trackInfo: this.currentTrackInfo,
       error,
     };
+
+    if ('mediaSession' in navigator && typeof navigator.mediaSession.setPositionState === 'function') {
+      try {
+        if (duration > 0 && isFinite(duration) && isFinite(currentTime) && currentTime <= duration) {
+          navigator.mediaSession.setPositionState({
+            duration,
+            playbackRate: this.audio.playbackRate || 1,
+            position: currentTime,
+          });
+        }
+      } catch {
+        // Ignore setPositionState errors if state is out of range or transient
+      }
+    }
+
     for (const listener of this.stateListeners) {
       listener(payload);
     }
