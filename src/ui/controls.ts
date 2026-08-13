@@ -40,6 +40,7 @@ export class UIControls {
   private sensitivityInput: HTMLInputElement;
   private barCountSelect: HTMLSelectElement | null;
   private fftSizeSelect: HTMLSelectElement | null;
+  private lavaSpeedInput: HTMLInputElement | null;
   private reducedMotionSelect: HTMLSelectElement | null;
   private autoRotateInput: HTMLInputElement | null;
   private librarySelect: HTMLSelectElement;
@@ -72,6 +73,7 @@ export class UIControls {
     this.sensitivityInput = document.querySelector<HTMLInputElement>('#sensitivity')!;
     this.barCountSelect = document.querySelector<HTMLSelectElement>('#bar-count');
     this.fftSizeSelect = document.querySelector<HTMLSelectElement>('#fft-size');
+    this.lavaSpeedInput = document.querySelector<HTMLInputElement>('#lava-speed');
     this.reducedMotionSelect = document.querySelector<HTMLSelectElement>('#reduced-motion');
     this.autoRotateInput = document.querySelector<HTMLInputElement>('#auto-rotate');
     this.librarySelect = document.querySelector<HTMLSelectElement>('#library-select')!;
@@ -130,6 +132,7 @@ export class UIControls {
     if (this.sensitivityInput) this.sensitivityInput.value = s.sensitivity.toString();
     if (this.barCountSelect) this.barCountSelect.value = String(s.barCount);
     if (this.fftSizeSelect) this.fftSizeSelect.value = String(s.fftSize);
+    if (this.lavaSpeedInput) this.lavaSpeedInput.value = s.lavaSpeed.toString();
     if (this.reducedMotionSelect) this.reducedMotionSelect.value = s.reducedMotionOverride;
     if (this.autoRotateInput) this.autoRotateInput.checked = s.cameraAutoRotate;
   }
@@ -212,6 +215,13 @@ export class UIControls {
       this.fftSizeSelect.addEventListener('change', () => {
         const fftSize = parseInt(this.fftSizeSelect!.value, 10) as AppSettingsV1['fftSize'];
         this.persistSettings({ fftSize });
+      });
+    }
+
+    if (this.lavaSpeedInput) {
+      this.lavaSpeedInput.addEventListener('input', () => {
+        const lavaSpeed = parseFloat(this.lavaSpeedInput!.value);
+        this.persistSettings({ lavaSpeed });
       });
     }
 

@@ -348,6 +348,7 @@ export class LavaLamp {
 
   private blobs: WaxBlob[] = [];
   private lastTime = 0;
+  private simTime = 0;
   private heatPulse = 0;
   private smoothBass = 0;
   private smoothMid = 0;
@@ -721,7 +722,7 @@ export class LavaLamp {
 
     if (reduced) return;
 
-    const time = performance.now() * 0.001;
+    const time = this.simTime;
     const innerR = 1.55;
 
     for (const blob of this.blobs) {
@@ -799,7 +800,7 @@ export class LavaLamp {
     this.waxMesh.updateWorldMatrix(true, false);
     this.waxMesh.worldToLocal(camLocal);
     u.uCamPos.value.copy(camLocal);
-    u.uTime.value = performance.now() * 0.001;
+    u.uTime.value = this.simTime;
     u.uEnergy.value = this.smoothEnergy;
     u.uBass.value = this.smoothBass;
     u.uMid.value = this.smoothMid;
@@ -854,8 +855,12 @@ export class LavaLamp {
     if (this.isDestroyed || this.contextLost) return;
 
     const now = performance.now();
-    const dt = this.lastTime ? Math.min(0.05, (now - this.lastTime) / 1000) : 0.016;
+    const rawDt = this.lastTime ? Math.min(0.05, (now - this.lastTime) / 1000) : 0.016;
     this.lastTime = now;
+
+    const speed = typeof settings.lavaSpeed === 'number' ? settings.lavaSpeed : 1.0;
+    const dt = rawDt * speed;
+    this.simTime += dt;
 
     const reduced = isReducedMotion(settings);
     this.controls.autoRotate = settings.cameraAutoRotate && !reduced;
