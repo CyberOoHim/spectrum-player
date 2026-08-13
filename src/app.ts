@@ -14,8 +14,8 @@ const DEMO_TRACK: PlayerTrackInfo = {
 };
 
 const DEMO_URL = './demo/pulse.mp3';
-const SLOW_FRAME_MS = 35;
-const SLOW_FRAME_LIMIT = 90;
+const SLOW_FRAME_MS = 42;
+const SLOW_FRAME_LIMIT = 120;
 
 export function boot(): void {
   const container = document.querySelector<HTMLElement>('#canvas-host');
@@ -93,8 +93,12 @@ export function boot(): void {
     setStatusMessage(message);
   };
 
+  let warmupUntil = 0;
+
   const initVisualizer = () => {
     destroyVisualizers();
+    warmupUntil = performance.now() + 2000;
+    slowFrameCount = 0;
 
     if (settings.visualizerMode === '2d') {
       try {
@@ -144,13 +148,22 @@ export function boot(): void {
   };
 
   const degradePerformance = () => {
+    // If lava lamp is active, degrade internal dynamic resolution first before forcing mode change
+    if (settings.visualizerMode === 'lava' && vizLava) {
+      const reducedInternal = vizLava.degradeQuality();
+      if (reducedInternal) {
+        setStatusMessage('Performance: reduced lava lamp resolution.');
+        return;
+      }
+    }
+
     const updates: Partial<AppSettingsV1> = {};
     const nextBarCount = Math.max(32, Math.round(settings.barCount / 2));
     if (nextBarCount < settings.barCount) {
       updates.barCount = nextBarCount;
     }
     const prevMode = settings.visualizerMode;
-    if (settings.visualizerMode === 'particles' || settings.visualizerMode === 'orb' || settings.visualizerMode === 'lava') {
+    if (settings.visualizerMode === 'particles' || settings.visualizerMode === 'orb') {
       updates.visualizerMode = 'bars';
     }
     if (Object.keys(updates).length === 0) return;
@@ -163,9 +176,7 @@ export function boot(): void {
     const parts = [];
     if (updates.barCount) parts.push(`bar count ${updated.barCount}`);
     if (updates.visualizerMode) {
-      if (prevMode === 'lava') {
-        parts.push('lava lamp off');
-      } else if (prevMode === 'orb') {
+      if (prevMode === 'orb') {
         parts.push('shader orb off');
       } else {
         parts.push('particles off');
@@ -184,7 +195,10 @@ export function boot(): void {
       return;
     }
 
-    if (lastFrameTime > 0 && player.isPlaying()) {
+    if (now < warmupUntil) {
+      lastFrameTime = now;
+      slowFrameCount = 0;
+    } else if (lastFrameTime > 0 && player.isPlaying()) {
       const dt = now - lastFrameTime;
       if (dt > SLOW_FRAME_MS) {
         slowFrameCount += 1;

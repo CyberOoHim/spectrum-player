@@ -131,48 +131,37 @@ float hash(vec3 p) {
   return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
 }
 
-float smin(float a, float b, float k) {
-  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+float smin(float a, float b, float k, float invK) {
+  float h = clamp(0.5 + 0.5 * (b - a) * invK, 0.0, 1.0);
   return mix(b, a, h) - k * h * (1.0 - h);
-}
-
-float bottleSdf(vec3 p) {
-  float radial = length(p.xz);
-  float body = radial - 1.78;
-  float topCap = length(vec3(p.x, max(p.y - 4.15, 0.0), p.z)) - 1.78;
-  float cyl = p.y > 4.15 ? topCap : body;
-  float top = p.y - 4.55;
-  float bot = -4.55 - p.y;
-  return max(cyl, max(top, bot));
 }
 
 float waxSdf(vec3 p) {
   float d = 1e5;
   float k = 0.20 + uGoo * 0.18;
+  float invK = 1.0 / k;
+  float invStretch = 1.0 / (1.0 + uBass * 0.12);
+
   for (int i = 0; i < 12; i++) {
     float r = uBlobs[i].w;
     if (r < 0.001) continue;
     vec3 q = p - uBlobs[i].xyz;
-    float stretch = 1.0 + uBass * 0.12;
-    q.y /= stretch;
-    d = smin(d, length(q) - r, k);
+    q.y *= invStretch;
+    d = smin(d, length(q) - r, k, invK);
   }
   float pool = length(vec3(p.x * 0.72, (p.y + 4.35) * 1.7, p.z * 0.72)) - (1.05 + uBass * 0.28);
-  d = smin(d, pool, 0.28);
+  d = smin(d, pool, 0.28, 3.5714);
   return d;
 }
 
-float mapScene(vec3 p) {
-  return max(waxSdf(p), bottleSdf(p));
-}
-
 vec3 calcNormal(vec3 p) {
-  const vec2 e = vec2(0.012, 0.0);
-  return normalize(vec3(
-    mapScene(p + e.xyy) - mapScene(p - e.xyy),
-    mapScene(p + e.yxy) - mapScene(p - e.yxy),
-    mapScene(p + e.yyx) - mapScene(p - e.yyx)
-  ));
+  const vec2 e = vec2(1.0, -1.0) * 0.010;
+  return normalize(
+    e.xyy * waxSdf(p + e.xyy) +
+    e.yyx * waxSdf(p + e.yyx) +
+    e.yxy * waxSdf(p + e.yxy) +
+    e.xxx * waxSdf(p + e.xxx)
+  );
 }
 
 vec3 blobColor(vec3 p) {
@@ -263,16 +252,16 @@ void main() {
   float hit = 0.0;
   float glow = 0.0;
 
-  for (int i = 0; i < 56; i++) {
+  for (int i = 0; i < 38; i++) {
     if (t > tExit) break;
-    float d = mapScene(p);
-    float fieldGlow = exp(-max(d, 0.0) * 6.5);
-    glow += fieldGlow * 0.018;
+    float d = waxSdf(p);
+    float prox = max(0.0, 1.0 - max(d, 0.0) * 2.2);
+    glow += prox * prox * 0.022;
     if (d < 0.012) {
       hit = 1.0;
       break;
     }
-    t += clamp(d, 0.018, 0.22);
+    t += clamp(d * 0.85, 0.018, 0.75);
     p = ro + rd * t;
   }
 
@@ -358,12 +347,27 @@ export class LavaLamp {
   private isDestroyed = false;
   private contextLost = false;
 
+  private currentPixelRatio = 1.0;
+  private minPixelRatio = 0.55;
+  private maxPixelRatio = 1.0;
+  private emaFrameTime = 16.6;
+  private lastDprAdjustTime = 0;
+
   constructor(container: HTMLElement, options: LavaLampOptions = {}) {
     this.container = container;
     this.onContextLostCb = options.onContextLost;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.0));
+    const isMobile =
+      typeof window !== 'undefined' &&
+      (window.innerWidth < 768 ||
+        (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent));
+
+    this.maxPixelRatio = isMobile ? 0.9 : Math.min(window.devicePixelRatio || 1, 1.0);
+    this.currentPixelRatio = isMobile ? 0.8 : this.maxPixelRatio;
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(this.currentPixelRatio);
     this.renderer.setSize(this.container.clientWidth || 800, this.container.clientHeight || 400);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -429,7 +433,7 @@ export class LavaLamp {
       side: THREE.FrontSide,
     });
 
-    const waxGeom = new THREE.CylinderGeometry(1.86, 1.86, 9.3, 48, 1, true);
+    const waxGeom = new THREE.CylinderGeometry(1.86, 1.86, 9.3, 32, 1, true);
     this.waxMesh = new THREE.Mesh(waxGeom, this.waxMaterial);
     this.waxMesh.position.y = 6.0;
     this.waxMesh.renderOrder = 1;
@@ -481,7 +485,7 @@ export class LavaLamp {
 
   private buildStage(): void {
     const table = new THREE.Mesh(
-      new THREE.CylinderGeometry(7.4, 7.6, 0.18, 64),
+      new THREE.CylinderGeometry(7.4, 7.6, 0.18, 36),
       new THREE.MeshStandardMaterial({
         color: 0x140c0a,
         roughness: 0.72,
@@ -492,7 +496,7 @@ export class LavaLamp {
     this.scene.add(table);
 
     const glow = new THREE.Mesh(
-      new THREE.CircleGeometry(2.6, 48),
+      new THREE.CircleGeometry(2.6, 32),
       new THREE.MeshBasicMaterial({
         color: 0x3a160c,
         transparent: true,
@@ -518,7 +522,7 @@ export class LavaLamp {
     this.scene.add(rim);
 
     const backdrop = new THREE.Mesh(
-      new THREE.SphereGeometry(36, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      new THREE.SphereGeometry(36, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
       new THREE.MeshBasicMaterial({ color: 0x0a0608, side: THREE.BackSide })
     );
     backdrop.position.y = 4;
@@ -539,15 +543,15 @@ export class LavaLamp {
       new THREE.Vector2(1.58, 1.08),
       new THREE.Vector2(1.52, 1.14),
     ];
-    const foot = new THREE.Mesh(new THREE.LatheGeometry(footPts, 80), brass);
+    const foot = new THREE.Mesh(new THREE.LatheGeometry(footPts, 44), brass);
     this.lampGroup.add(foot);
 
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(1.52, 1.62, 0.1, 48), brassDark);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(1.52, 1.62, 0.1, 36), brassDark);
     collar.position.y = 1.16;
     this.lampGroup.add(collar);
 
     const port = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.04, 0.14, 6, 12),
+      new THREE.CapsuleGeometry(0.04, 0.14, 6, 10),
       new THREE.MeshStandardMaterial({
         color: 0x1a1208,
         emissive: 0x2a1808,
@@ -574,7 +578,7 @@ export class LavaLamp {
     ];
 
     const glass = new THREE.Mesh(
-      new THREE.LatheGeometry(glassPts, 80),
+      new THREE.LatheGeometry(glassPts, 48),
       new THREE.ShaderMaterial({
         uniforms: {},
         vertexShader: /* glsl */ `
@@ -615,19 +619,19 @@ export class LavaLamp {
       new THREE.Vector2(0.28, 11.32),
       new THREE.Vector2(0.06, 11.34),
     ];
-    const cap = new THREE.Mesh(new THREE.LatheGeometry(capPts, 64), brass);
+    const cap = new THREE.Mesh(new THREE.LatheGeometry(capPts, 36), brass);
     this.lampGroup.add(cap);
 
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.08, 20), brassDark);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.08, 16), brassDark);
     neck.position.y = 11.38;
     this.lampGroup.add(neck);
 
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.16, 24, 16), brass);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), brass);
     knob.position.y = 11.48;
     this.lampGroup.add(knob);
 
     const heater = new THREE.Mesh(
-      new THREE.CircleGeometry(1.55, 36),
+      new THREE.CircleGeometry(1.55, 32),
       new THREE.MeshStandardMaterial({
         color: 0x2a1008,
         emissive: 0xff5a24,
@@ -858,6 +862,16 @@ export class LavaLamp {
     this.heaterLight.intensity = 4.8 + this.smoothBass * 5.5 + this.heatPulse * 3.0;
   }
 
+  public degradeQuality(): boolean {
+    if (this.currentPixelRatio > this.minPixelRatio + 0.05) {
+      this.currentPixelRatio = Math.max(this.minPixelRatio, this.currentPixelRatio - 0.15);
+      this.renderer.setPixelRatio(this.currentPixelRatio);
+      this.resize();
+      return true;
+    }
+    return false;
+  }
+
   public render(bands: Float32Array, settings: AppSettingsV1): void {
     if (this.isDestroyed || this.contextLost) return;
 
@@ -876,7 +890,27 @@ export class LavaLamp {
 
     this.updatePhysics(dt, bands, reduced);
     this.updateUniforms(settings);
+
+    const renderStart = performance.now();
     this.renderer.render(this.scene, this.camera);
+    const renderDuration = performance.now() - renderStart;
+
+    this.emaFrameTime = this.emaFrameTime * 0.9 + renderDuration * 0.1;
+
+    // Smoothly adapt pixel ratio if GPU frame time is high, without interrupting the user
+    if (now - this.lastDprAdjustTime > 2000) {
+      if (this.emaFrameTime > 22.0 && this.currentPixelRatio > this.minPixelRatio) {
+        this.currentPixelRatio = Math.max(this.minPixelRatio, this.currentPixelRatio - 0.08);
+        this.renderer.setPixelRatio(this.currentPixelRatio);
+        this.resize();
+        this.lastDprAdjustTime = now;
+      } else if (this.emaFrameTime < 12.0 && this.currentPixelRatio < this.maxPixelRatio) {
+        this.currentPixelRatio = Math.min(this.maxPixelRatio, this.currentPixelRatio + 0.04);
+        this.renderer.setPixelRatio(this.currentPixelRatio);
+        this.resize();
+        this.lastDprAdjustTime = now;
+      }
+    }
   }
 
   private frameLamp(): void {
