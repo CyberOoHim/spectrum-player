@@ -19,8 +19,8 @@ const SLOW_FRAME_LIMIT = 90;
 
 export function boot(): void {
   const container = document.querySelector<HTMLElement>('#canvas-host');
-  const nowPlayingEl = document.querySelector<HTMLParagraphElement>('#now-playing');
-  const statusEl = document.querySelector<HTMLParagraphElement>('#status');
+  const nowPlayingEl = document.querySelector<HTMLElement>('#now-playing');
+  const statusEl = document.querySelector<HTMLElement>('#status');
 
   if (!container || !nowPlayingEl || !statusEl) {
     console.error('Shell markup is missing expected control elements.');
@@ -32,7 +32,7 @@ export function boot(): void {
 
   const setStatusMessage = (msg: string, isError: boolean = false) => {
     statusEl.textContent = msg;
-    statusEl.style.color = isError ? '#f87171' : 'var(--muted)';
+    statusEl.style.color = isError ? '#fca5a5' : 'var(--text-muted)';
   };
 
   subscribeSettingsPersist((ok) => {

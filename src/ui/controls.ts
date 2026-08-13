@@ -56,8 +56,17 @@ export class UIControls {
   private resetSettingsBtn: HTMLButtonElement | null;
   private clearLibraryBtn: HTMLButtonElement | null;
 
+  // New Cozy UI Elements
+  private settingsDrawer: HTMLElement | null;
+  private settingsToggleBtn: HTMLButtonElement | null;
+  private closeDrawerBtn: HTMLButtonElement | null;
+  private fullscreenBtn: HTMLButtonElement | null;
+  private dropOverlay: HTMLElement | null;
+  private soundwaveDot: HTMLElement | null;
+
   private currentTrackMetadataList: TrackMetadata[] = [];
   private isUserSeeking: boolean = false;
+  private dragCounter: number = 0;
 
   constructor(config: UIControlsConfig) {
     this.config = config;
@@ -92,6 +101,13 @@ export class UIControls {
     this.resetSettingsBtn = document.querySelector<HTMLButtonElement>('#reset-settings');
     this.clearLibraryBtn = document.querySelector<HTMLButtonElement>('#clear-library');
 
+    this.settingsDrawer = document.querySelector<HTMLElement>('#settings-drawer');
+    this.settingsToggleBtn = document.querySelector<HTMLButtonElement>('#settings-toggle');
+    this.closeDrawerBtn = document.querySelector<HTMLButtonElement>('#close-drawer');
+    this.fullscreenBtn = document.querySelector<HTMLButtonElement>('#fullscreen-btn');
+    this.dropOverlay = document.querySelector<HTMLElement>('#drop-overlay');
+    this.soundwaveDot = document.querySelector<HTMLElement>('#soundwave-dot');
+
     this.initUIValues();
     this.bindEvents();
     this.bindKeyboardShortcuts();
@@ -123,18 +139,52 @@ export class UIControls {
     }
   }
 
+  private updateMuteIconState(muted: boolean): void {
+    this.muteBtn.setAttribute('aria-pressed', muted ? 'true' : 'false');
+    const highIcon = this.muteBtn.querySelector('.icon-vol-high');
+    const mutedIcon = this.muteBtn.querySelector('.icon-vol-muted');
+    if (highIcon && mutedIcon) {
+      highIcon.classList.toggle('hidden', muted);
+      mutedIcon.classList.toggle('hidden', !muted);
+    } else {
+      this.muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+    }
+  }
+
+  private updateThemePalette(colorMode: AppSettingsV1['colorMode']): void {
+    const themeMap: Record<AppSettingsV1['colorMode'], string> = {
+      spectrum: 'sunset',
+      mood: 'mood',
+      mono: 'mono',
+    };
+    document.documentElement.setAttribute('data-theme', themeMap[colorMode] || 'sunset');
+  }
+
+  private toggleDrawer(open: boolean): void {
+    if (!this.settingsDrawer) return;
+    if (open) {
+      this.settingsDrawer.classList.remove('hidden');
+      this.settingsDrawer.setAttribute('aria-hidden', 'false');
+    } else {
+      this.settingsDrawer.classList.add('hidden');
+      this.settingsDrawer.setAttribute('aria-hidden', 'true');
+    }
+  }
+
   private initUIValues(): void {
     const s = this.config.settings;
     this.volumeInput.value = s.volume.toString();
     this.volumeInput.disabled = false;
-    this.muteBtn.textContent = s.muted ? 'Unmute' : 'Mute';
-    this.muteBtn.setAttribute('aria-pressed', s.muted ? 'true' : 'false');
+    this.updateMuteIconState(s.muted);
+
     if (this.loopBtn) {
-      this.loopBtn.textContent = s.loop ? 'Loop: On' : 'Loop: Off';
       this.loopBtn.setAttribute('aria-pressed', s.loop ? 'true' : 'false');
     }
     this.modeSelect.value = s.visualizerMode;
-    if (this.colorSelect) this.colorSelect.value = s.colorMode;
+    if (this.colorSelect) {
+      this.colorSelect.value = s.colorMode;
+      this.updateThemePalette(s.colorMode);
+    }
     if (this.sensitivityInput) this.sensitivityInput.value = s.sensitivity.toString();
     if (this.barCountSelect) this.barCountSelect.value = String(s.barCount);
     if (this.fftSizeSelect) this.fftSizeSelect.value = String(s.fftSize);
@@ -186,8 +236,7 @@ export class UIControls {
     this.muteBtn.addEventListener('click', () => {
       const newMuted = !this.config.settings.muted;
       this.config.player.setMuted(newMuted);
-      this.muteBtn.textContent = newMuted ? 'Unmute' : 'Mute';
-      this.muteBtn.setAttribute('aria-pressed', newMuted ? 'true' : 'false');
+      this.updateMuteIconState(newMuted);
       this.persistSettings({ muted: newMuted });
     });
 
@@ -195,7 +244,6 @@ export class UIControls {
       this.loopBtn.addEventListener('click', () => {
         const newLoop = !this.config.settings.loop;
         this.config.player.setLoop(newLoop);
-        this.loopBtn.textContent = newLoop ? 'Loop: On' : 'Loop: Off';
         this.loopBtn.setAttribute('aria-pressed', newLoop ? 'true' : 'false');
         this.persistSettings({ loop: newLoop });
       });
@@ -212,6 +260,7 @@ export class UIControls {
     if (this.colorSelect) {
       this.colorSelect.addEventListener('change', () => {
         const color = this.colorSelect.value as AppSettingsV1['colorMode'];
+        this.updateThemePalette(color);
         this.persistSettings({ colorMode: color });
       });
     }
@@ -271,6 +320,38 @@ export class UIControls {
       });
     }
 
+    // Drawer Event Listeners
+    if (this.settingsToggleBtn) {
+      this.settingsToggleBtn.addEventListener('click', () => {
+        const isHidden = this.settingsDrawer?.classList.contains('hidden');
+        this.toggleDrawer(!!isHidden);
+      });
+    }
+
+    if (this.closeDrawerBtn) {
+      this.closeDrawerBtn.addEventListener('click', () => this.toggleDrawer(false));
+    }
+
+    if (this.settingsDrawer) {
+      this.settingsDrawer.addEventListener('click', (e) => {
+        if (e.target === this.settingsDrawer) {
+          this.toggleDrawer(false);
+        }
+      });
+    }
+
+    // Fullscreen Action
+    if (this.fullscreenBtn) {
+      this.fullscreenBtn.addEventListener('click', () => {
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+        } else {
+          void document.documentElement.requestFullscreen();
+        }
+      });
+    }
+
+    // File Import Events
     this.fileInput.addEventListener('change', async () => {
       const file = this.fileInput.files?.[0];
       if (!file) return;
@@ -281,9 +362,29 @@ export class UIControls {
       }
     });
 
+    // Drag and drop overlay feedback
+    window.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      this.dragCounter++;
+      if (this.dropOverlay) this.dropOverlay.classList.add('active');
+    });
+
     window.addEventListener('dragover', (e) => e.preventDefault());
+
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      this.dragCounter--;
+      if (this.dragCounter <= 0 && this.dropOverlay) {
+        this.dragCounter = 0;
+        this.dropOverlay.classList.remove('active');
+      }
+    });
+
     window.addEventListener('drop', async (e) => {
       e.preventDefault();
+      this.dragCounter = 0;
+      if (this.dropOverlay) this.dropOverlay.classList.remove('active');
+
       const files = e.dataTransfer?.files;
       if (files && files.length > 0) {
         await this.importAudioFile(files[0]);
@@ -421,8 +522,20 @@ export class UIControls {
     }
 
     this.config.player.subscribe(({ isPlaying, currentTime, duration, title, error }) => {
-      this.playBtn.textContent = isPlaying ? 'Pause' : 'Play';
+      // Toggle play / pause icons
+      const playIcon = this.playBtn.querySelector('.icon-play');
+      const pauseIcon = this.playBtn.querySelector('.icon-pause');
+      if (playIcon && pauseIcon) {
+        playIcon.classList.toggle('hidden', isPlaying);
+        pauseIcon.classList.toggle('hidden', !isPlaying);
+      } else {
+        this.playBtn.textContent = isPlaying ? 'Pause' : 'Play';
+      }
       this.playBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+
+      if (this.soundwaveDot) {
+        this.soundwaveDot.classList.toggle('playing', isPlaying);
+      }
 
       if (!this.isUserSeeking) {
         this.seekInput.max = (duration || 100).toString();
@@ -568,6 +681,11 @@ export class UIControls {
     window.addEventListener('keydown', (e) => {
       const target = e.target as HTMLElement;
       if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(target.tagName)) {
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        this.toggleDrawer(false);
         return;
       }
 
