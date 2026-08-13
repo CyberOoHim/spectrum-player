@@ -1,16 +1,15 @@
-const CACHE_NAME = 'spectrum-player-v1';
+const CACHE_NAME = 'spectrum-player-v2';
 const PRECACHE_ASSETS = [
   './',
   './index.html',
   './demo/pulse.mp3',
-  './manifest.webmanifest'
+  './manifest.webmanifest',
+  './favicon.svg',
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS);
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_ASSETS)).then(() => self.skipWaiting())
   );
 });
 
@@ -28,22 +27,42 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+function isNavigationRequest(request) {
+  if (request.mode === 'navigate') return true;
+  const url = new URL(request.url);
+  return url.pathname.endsWith('.html') || url.pathname.endsWith('/');
+}
+
 self.addEventListener('fetch', (event) => {
-  // Cache-first strategy for GET requests
   if (event.request.method !== 'GET') return;
+
+  if (isNavigationRequest(event.request)) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.ok) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Fetch background refresh
-        fetch(event.request).then((networkResponse) => {
+      const fetched = fetch(event.request)
+        .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
           }
-        }).catch(() => {});
-        return cachedResponse;
-      }
-      return fetch(event.request);
+          return networkResponse;
+        })
+        .catch(() => cachedResponse);
+
+      return cachedResponse || fetched;
     })
   );
 });

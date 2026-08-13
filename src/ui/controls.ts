@@ -10,10 +10,22 @@ export interface UIControlsConfig {
   setStatusMessage: (msg: string, isError?: boolean) => void;
 }
 
+const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|flac|aac|webm|mp4|opus)$/i;
+const DEMO_TRACK: PlayerTrackInfo = {
+  title: 'Demo · pulse.mp3',
+  source: 'demo',
+  demoId: 'pulse.mp3',
+};
+const DEMO_URL = './demo/pulse.mp3';
+
+export function isSupportedAudioFile(file: File): boolean {
+  if (file.type.startsWith('audio/')) return true;
+  return AUDIO_EXT.test(file.name);
+}
+
 export class UIControls {
   private config: UIControlsConfig;
 
-  // DOM Elements
   private playBtn: HTMLButtonElement;
   private prevBtn: HTMLButtonElement | null;
   private nextBtn: HTMLButtonElement | null;
@@ -26,11 +38,14 @@ export class UIControls {
   private modeSelect: HTMLSelectElement;
   private colorSelect: HTMLSelectElement;
   private sensitivityInput: HTMLInputElement;
+  private barCountSelect: HTMLSelectElement | null;
+  private fftSizeSelect: HTMLSelectElement | null;
+  private reducedMotionSelect: HTMLSelectElement | null;
+  private autoRotateInput: HTMLInputElement | null;
   private librarySelect: HTMLSelectElement;
   private deleteTrackBtn: HTMLButtonElement;
   private storageInfo: HTMLElement;
 
-  // Tools Elements
   private exportSettingsBtn: HTMLButtonElement | null;
   private importSettingsBtn: HTMLButtonElement | null;
   private importSettingsFile: HTMLInputElement | null;
@@ -43,7 +58,6 @@ export class UIControls {
   constructor(config: UIControlsConfig) {
     this.config = config;
 
-    // Element bindings
     this.playBtn = document.querySelector<HTMLButtonElement>('#play')!;
     this.prevBtn = document.querySelector<HTMLButtonElement>('#prev-track');
     this.nextBtn = document.querySelector<HTMLButtonElement>('#next-track');
@@ -56,6 +70,10 @@ export class UIControls {
     this.modeSelect = document.querySelector<HTMLSelectElement>('#mode-select')!;
     this.colorSelect = document.querySelector<HTMLSelectElement>('#color-select')!;
     this.sensitivityInput = document.querySelector<HTMLInputElement>('#sensitivity')!;
+    this.barCountSelect = document.querySelector<HTMLSelectElement>('#bar-count');
+    this.fftSizeSelect = document.querySelector<HTMLSelectElement>('#fft-size');
+    this.reducedMotionSelect = document.querySelector<HTMLSelectElement>('#reduced-motion');
+    this.autoRotateInput = document.querySelector<HTMLInputElement>('#auto-rotate');
     this.librarySelect = document.querySelector<HTMLSelectElement>('#library-select')!;
     this.deleteTrackBtn = document.querySelector<HTMLButtonElement>('#delete-track')!;
     this.storageInfo = document.querySelector<HTMLElement>('#storage-info')!;
@@ -72,6 +90,31 @@ export class UIControls {
     this.refreshLibrary();
   }
 
+  public syncFromSettings(settings: AppSettingsV1): void {
+    this.config.settings = settings;
+    this.initUIValues();
+  }
+
+  private persistSettings(partial: Partial<AppSettingsV1>): AppSettingsV1 {
+    const updated = saveSettings(partial);
+    this.config.settings = updated;
+    this.config.onSettingsChange(updated);
+    return updated;
+  }
+
+  private applyVolume(vol: number): void {
+    const clamped = Math.max(0, Math.min(1, vol));
+    this.config.player.setVolume(clamped);
+    this.volumeInput.value = clamped.toString();
+    this.persistSettings({ volume: clamped });
+  }
+
+  private catchPlay(result: Promise<void> | void): void {
+    if (result) {
+      void result.catch(() => {});
+    }
+  }
+
   private initUIValues(): void {
     const s = this.config.settings;
     this.volumeInput.value = s.volume.toString();
@@ -82,37 +125,43 @@ export class UIControls {
       this.loopBtn.textContent = s.loop ? 'Loop: On' : 'Loop: Off';
       this.loopBtn.setAttribute('aria-pressed', s.loop ? 'true' : 'false');
     }
-    this.config.player.setLoop(s.loop);
     this.modeSelect.value = s.visualizerMode;
     if (this.colorSelect) this.colorSelect.value = s.colorMode;
     if (this.sensitivityInput) this.sensitivityInput.value = s.sensitivity.toString();
+    if (this.barCountSelect) this.barCountSelect.value = String(s.barCount);
+    if (this.fftSizeSelect) this.fftSizeSelect.value = String(s.fftSize);
+    if (this.reducedMotionSelect) this.reducedMotionSelect.value = s.reducedMotionOverride;
+    if (this.autoRotateInput) this.autoRotateInput.checked = s.cameraAutoRotate;
+  }
+
+  private endSeek(): void {
+    if (!this.isUserSeeking) return;
+    const val = parseFloat(this.seekInput.value);
+    if (isFinite(val)) {
+      this.config.player.seek(val);
+    }
+    this.isUserSeeking = false;
   }
 
   private bindEvents(): void {
-    // Play/Pause
     this.playBtn.addEventListener('click', () => {
-      this.config.player.togglePlayPause();
+      this.catchPlay(this.config.player.togglePlayPause());
     });
 
-    // Seek input
-    this.seekInput.addEventListener('mousedown', () => { this.isUserSeeking = true; });
-    this.seekInput.addEventListener('touchstart', () => { this.isUserSeeking = true; });
+    this.seekInput.addEventListener('pointerdown', () => {
+      this.isUserSeeking = true;
+    });
     this.seekInput.addEventListener('input', () => {
       const val = parseFloat(this.seekInput.value);
       this.updateTimeDisplay(val, this.config.player.getDuration());
     });
-    this.seekInput.addEventListener('change', () => {
-      const val = parseFloat(this.seekInput.value);
-      this.config.player.seek(val);
-      this.isUserSeeking = false;
-    });
+    this.seekInput.addEventListener('pointerup', () => this.endSeek());
+    this.seekInput.addEventListener('pointercancel', () => this.endSeek());
+    this.seekInput.addEventListener('blur', () => this.endSeek());
+    this.seekInput.addEventListener('change', () => this.endSeek());
 
-    // Volume & Mute
     this.volumeInput.addEventListener('input', () => {
-      const vol = parseFloat(this.volumeInput.value);
-      this.config.player.setVolume(vol);
-      const updated = saveSettings({ volume: vol });
-      this.config.onSettingsChange(updated);
+      this.applyVolume(parseFloat(this.volumeInput.value));
     });
 
     this.muteBtn.addEventListener('click', () => {
@@ -120,8 +169,7 @@ export class UIControls {
       this.config.player.setMuted(newMuted);
       this.muteBtn.textContent = newMuted ? 'Unmute' : 'Mute';
       this.muteBtn.setAttribute('aria-pressed', newMuted ? 'true' : 'false');
-      const updated = saveSettings({ muted: newMuted });
-      this.config.onSettingsChange(updated);
+      this.persistSettings({ muted: newMuted });
     });
 
     if (this.loopBtn) {
@@ -130,121 +178,86 @@ export class UIControls {
         this.config.player.setLoop(newLoop);
         this.loopBtn.textContent = newLoop ? 'Loop: On' : 'Loop: Off';
         this.loopBtn.setAttribute('aria-pressed', newLoop ? 'true' : 'false');
-        const updated = saveSettings({ loop: newLoop });
-        this.config.onSettingsChange(updated);
+        this.persistSettings({ loop: newLoop });
       });
     }
 
-    // Mode Selector
     this.modeSelect.addEventListener('change', () => {
       const mode = this.modeSelect.value as AppSettingsV1['visualizerMode'];
-      const updated = saveSettings({ visualizerMode: mode });
-      this.config.onSettingsChange(updated);
+      this.persistSettings({ visualizerMode: mode });
     });
 
-    // Color Mode Selector
     if (this.colorSelect) {
       this.colorSelect.addEventListener('change', () => {
         const color = this.colorSelect.value as AppSettingsV1['colorMode'];
-        const updated = saveSettings({ colorMode: color });
-        this.config.onSettingsChange(updated);
+        this.persistSettings({ colorMode: color });
       });
     }
 
-    // Sensitivity Slider
     if (this.sensitivityInput) {
       this.sensitivityInput.addEventListener('input', () => {
         const sens = parseFloat(this.sensitivityInput.value);
-        const updated = saveSettings({ sensitivity: sens });
-        this.config.onSettingsChange(updated);
+        this.persistSettings({ sensitivity: sens });
       });
     }
 
-    // File Input / Upload
+    if (this.barCountSelect) {
+      this.barCountSelect.addEventListener('change', () => {
+        const barCount = parseInt(this.barCountSelect!.value, 10);
+        this.persistSettings({ barCount });
+      });
+    }
+
+    if (this.fftSizeSelect) {
+      this.fftSizeSelect.addEventListener('change', () => {
+        const fftSize = parseInt(this.fftSizeSelect!.value, 10) as AppSettingsV1['fftSize'];
+        this.persistSettings({ fftSize });
+      });
+    }
+
+    if (this.reducedMotionSelect) {
+      this.reducedMotionSelect.addEventListener('change', () => {
+        const reducedMotionOverride = this.reducedMotionSelect!.value as AppSettingsV1['reducedMotionOverride'];
+        this.persistSettings({ reducedMotionOverride });
+      });
+    }
+
+    if (this.autoRotateInput) {
+      this.autoRotateInput.addEventListener('change', () => {
+        this.persistSettings({ cameraAutoRotate: this.autoRotateInput!.checked });
+      });
+    }
+
     this.fileInput.addEventListener('change', async () => {
       const file = this.fileInput.files?.[0];
       if (!file) return;
-
       try {
-        this.config.setStatusMessage(`Importing ${file.name}...`);
-        const savedTrack = await saveTrack(file);
-
-        const blob = new Blob([savedTrack.data], { type: savedTrack.mimeType });
-        const blobUrl = URL.createObjectURL(blob);
-
-        const trackInfo: PlayerTrackInfo = {
-          title: savedTrack.title,
-          source: 'imported',
-          importedId: savedTrack.id,
-          blobUrlToRevoke: blobUrl,
-        };
-
-        this.config.onTrackSelected(blobUrl, trackInfo);
-        await this.config.player.play();
-        this.config.setStatusMessage(`Loaded & playing "${savedTrack.title}".`);
-        await this.refreshLibrary();
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'File import failed.';
-        this.config.setStatusMessage(message, true);
+        await this.importAudioFile(file);
       } finally {
         this.fileInput.value = '';
       }
     });
 
-    // Drag and Drop on Window
     window.addEventListener('dragover', (e) => e.preventDefault());
     window.addEventListener('drop', async (e) => {
       e.preventDefault();
       const files = e.dataTransfer?.files;
       if (files && files.length > 0) {
-        const file = files[0];
-        if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac|webm|mp4)$/i)) {
-          this.config.setStatusMessage('Selected file is not a supported audio format.', true);
-          return;
-        }
-        try {
-          this.config.setStatusMessage(`Importing ${file.name}...`);
-          const savedTrack = await saveTrack(file);
-          const blob = new Blob([savedTrack.data], { type: savedTrack.mimeType });
-          const blobUrl = URL.createObjectURL(blob);
-
-          const trackInfo: PlayerTrackInfo = {
-            title: savedTrack.title,
-            source: 'imported',
-            importedId: savedTrack.id,
-            blobUrlToRevoke: blobUrl,
-          };
-
-          this.config.onTrackSelected(blobUrl, trackInfo);
-          await this.config.player.play();
-          this.config.setStatusMessage(`Loaded & playing "${savedTrack.title}".`);
-          await this.refreshLibrary();
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'File import failed.';
-          this.config.setStatusMessage(message, true);
-        }
+        await this.importAudioFile(files[0]);
       }
     });
 
-    // Library Selector Change
     this.librarySelect.addEventListener('change', async () => {
       const selectedId = this.librarySelect.value;
       if (!selectedId) return;
 
       if (selectedId === 'demo') {
-        const demoUrl = './demo/pulse.mp3';
-        const trackInfo: PlayerTrackInfo = {
-          title: 'Demo · pulse.mp3',
-          source: 'demo',
-          demoId: 'pulse.mp3',
-        };
-        this.config.onTrackSelected(demoUrl, trackInfo);
-        await this.config.player.play();
+        this.config.onTrackSelected(DEMO_URL, DEMO_TRACK);
+        this.catchPlay(this.config.player.play());
         this.config.setStatusMessage('Loaded demo track.');
         return;
       }
 
-      // Load imported track from IndexedDB
       try {
         this.config.setStatusMessage('Loading track from IndexedDB...');
         const trackData = await getTrackData(selectedId);
@@ -255,7 +268,6 @@ export class UIControls {
 
         const blob = new Blob([trackData.data], { type: trackData.mimeType });
         const blobUrl = URL.createObjectURL(blob);
-
         const trackInfo: PlayerTrackInfo = {
           title: trackData.title,
           source: 'imported',
@@ -264,7 +276,7 @@ export class UIControls {
         };
 
         this.config.onTrackSelected(blobUrl, trackInfo);
-        await this.config.player.play();
+        this.catchPlay(this.config.player.play());
         this.config.setStatusMessage(`Loaded "${trackData.title}".`);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Failed to load track.';
@@ -272,7 +284,6 @@ export class UIControls {
       }
     });
 
-    // Delete Track
     this.deleteTrackBtn.addEventListener('click', async () => {
       const selectedId = this.librarySelect.value;
       if (!selectedId || selectedId === 'demo') return;
@@ -282,15 +293,7 @@ export class UIControls {
           await deleteTrack(selectedId);
           this.config.setStatusMessage('Track deleted.');
           await this.refreshLibrary();
-
-          // Fall back to demo track
-          const demoUrl = './demo/pulse.mp3';
-          const trackInfo: PlayerTrackInfo = {
-            title: 'Demo · pulse.mp3',
-            source: 'demo',
-            demoId: 'pulse.mp3',
-          };
-          this.config.onTrackSelected(demoUrl, trackInfo);
+          this.config.onTrackSelected(DEMO_URL, DEMO_TRACK);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Failed to delete track.';
           this.config.setStatusMessage(message, true);
@@ -298,7 +301,6 @@ export class UIControls {
       }
     });
 
-    // Prev & Next Buttons
     if (this.prevBtn) {
       this.prevBtn.addEventListener('click', () => this.playPrevTrack());
     }
@@ -306,7 +308,6 @@ export class UIControls {
       this.nextBtn.addEventListener('click', () => this.playNextTrack());
     }
 
-    // Export Settings JSON
     if (this.exportSettingsBtn) {
       this.exportSettingsBtn.addEventListener('click', () => {
         const jsonStr = JSON.stringify(this.config.settings, null, 2);
@@ -321,7 +322,6 @@ export class UIControls {
       });
     }
 
-    // Import Settings JSON
     if (this.importSettingsBtn && this.importSettingsFile) {
       this.importSettingsBtn.addEventListener('click', () => {
         this.importSettingsFile?.click();
@@ -339,7 +339,7 @@ export class UIControls {
           this.initUIValues();
           this.config.onSettingsChange(updated);
           this.config.setStatusMessage('Settings imported successfully.');
-        } catch (err) {
+        } catch {
           this.config.setStatusMessage('Invalid settings JSON file.', true);
         } finally {
           if (this.importSettingsFile) {
@@ -349,7 +349,6 @@ export class UIControls {
       });
     }
 
-    // Reset Settings
     if (this.resetSettingsBtn) {
       this.resetSettingsBtn.addEventListener('click', () => {
         if (confirm('Reset all settings to defaults?')) {
@@ -362,7 +361,6 @@ export class UIControls {
       });
     }
 
-    // Clear Library
     if (this.clearLibraryBtn) {
       this.clearLibraryBtn.addEventListener('click', async () => {
         if (confirm('Clear all imported audio files from your library?')) {
@@ -370,17 +368,15 @@ export class UIControls {
             await clearAllTracks();
             this.config.setStatusMessage('Audio library cleared.');
             await this.refreshLibrary();
-            // Switch to demo
             this.librarySelect.value = 'demo';
             this.librarySelect.dispatchEvent(new Event('change'));
-          } catch (err) {
+          } catch {
             this.config.setStatusMessage('Failed to clear library.', true);
           }
         }
       });
     }
 
-    // Player State Updates Listener
     this.config.player.subscribe(({ isPlaying, currentTime, duration, title, error }) => {
       this.playBtn.textContent = isPlaying ? 'Pause' : 'Play';
       this.playBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
@@ -395,7 +391,6 @@ export class UIControls {
         this.config.setStatusMessage(error, true);
       }
 
-      // Update Media Session
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({ title });
         navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
@@ -407,6 +402,76 @@ export class UIControls {
         }
       }
     });
+  }
+
+  private async importAudioFile(file: File): Promise<void> {
+    if (!isSupportedAudioFile(file)) {
+      this.config.setStatusMessage('Selected file is not a supported audio format.', true);
+      return;
+    }
+
+    const previous = this.config.player.getTrackInfo();
+    let savedId: string | null = null;
+
+    try {
+      this.config.setStatusMessage(`Importing ${file.name}...`);
+      const savedTrack = await saveTrack(file);
+      savedId = savedTrack.id;
+
+      const blob = new Blob([savedTrack.data], { type: savedTrack.mimeType });
+      const blobUrl = URL.createObjectURL(blob);
+      const trackInfo: PlayerTrackInfo = {
+        title: savedTrack.title,
+        source: 'imported',
+        importedId: savedTrack.id,
+        blobUrlToRevoke: blobUrl,
+      };
+
+      this.config.onTrackSelected(blobUrl, trackInfo);
+
+      try {
+        await this.config.player.play();
+      } catch {
+        await deleteTrack(savedTrack.id);
+        savedId = null;
+        await this.restorePreviousOrDemo(previous);
+        this.config.setStatusMessage('Could not play that file. Library unchanged.', true);
+        await this.refreshLibrary();
+        return;
+      }
+
+      this.config.setStatusMessage(`Loaded & playing "${savedTrack.title}".`);
+      await this.refreshLibrary();
+    } catch (err: unknown) {
+      if (savedId) {
+        try {
+          await deleteTrack(savedId);
+        } catch {
+          // Best-effort rollback
+        }
+      }
+      const message = err instanceof Error ? err.message : 'File import failed.';
+      this.config.setStatusMessage(message, true);
+    }
+  }
+
+  private async restorePreviousOrDemo(previous: PlayerTrackInfo | null): Promise<void> {
+    if (previous?.source === 'imported' && previous.importedId) {
+      const trackData = await getTrackData(previous.importedId);
+      if (trackData) {
+        const blob = new Blob([trackData.data], { type: trackData.mimeType });
+        const blobUrl = URL.createObjectURL(blob);
+        this.config.onTrackSelected(blobUrl, {
+          title: trackData.title,
+          source: 'imported',
+          importedId: trackData.id,
+          blobUrlToRevoke: blobUrl,
+        });
+        return;
+      }
+    }
+
+    this.config.onTrackSelected(DEMO_URL, previous?.source === 'demo' ? previous : DEMO_TRACK);
   }
 
   private updateTimeDisplay(current: number, total: number): void {
@@ -446,10 +511,13 @@ export class UIControls {
       this.deleteTrackBtn.style.display = 'none';
     }
 
-    // Storage Estimate
     const estimate = await getStorageEstimate();
     if (estimate && this.storageInfo) {
-      this.storageInfo.textContent = `Storage: ${estimate.usedMB.toFixed(1)} MB used`;
+      if (estimate.totalMB > 0) {
+        this.storageInfo.textContent = `Storage: ${estimate.usedMB.toFixed(1)} / ${estimate.totalMB.toFixed(0)} MB`;
+      } else {
+        this.storageInfo.textContent = `Storage: ${estimate.usedMB.toFixed(1)} MB used`;
+      }
     }
   }
 
@@ -463,7 +531,7 @@ export class UIControls {
       switch (e.key) {
         case ' ':
           e.preventDefault();
-          this.config.player.togglePlayPause();
+          this.catchPlay(this.config.player.togglePlayPause());
           break;
         case 'ArrowLeft':
           e.preventDefault();
@@ -475,13 +543,11 @@ export class UIControls {
           break;
         case 'ArrowUp':
           e.preventDefault();
-          this.config.player.setVolume(Math.min(1, parseFloat(this.volumeInput.value) + 0.05));
-          this.volumeInput.value = (this.config.player['volume'] || 0.8).toString();
+          this.applyVolume(this.config.player.getVolume() + 0.05);
           break;
         case 'ArrowDown':
           e.preventDefault();
-          this.config.player.setVolume(Math.max(0, parseFloat(this.volumeInput.value) - 0.05));
-          this.volumeInput.value = (this.config.player['volume'] || 0.8).toString();
+          this.applyVolume(this.config.player.getVolume() - 0.05);
           break;
         case 'm':
         case 'M':

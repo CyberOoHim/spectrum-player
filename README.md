@@ -29,7 +29,7 @@ A high-performance standalone web audio player and interactive 3D frequency spec
 - **Accessibility & Polish**:
   - Screen reader accessible DOM structure and `aria-live` status notifications.
   - Clear `:focus-visible` focus rings across controls.
-  - `prefers-reduced-motion` compliance.
+  - Reduced motion: system preference or an in-app override disables camera orbit and particle/orb motion.
 
 ---
 
@@ -66,6 +66,30 @@ Assets are built to the `dist/` directory with relative base path (`./`) for sta
 
 ---
 
+## Adding a demo track
+
+1. Put a short CC0 file (≤ 1 MB recommended) in `public/demo/`, e.g. `public/demo/pulse.mp3`.
+2. Point the default source in `src/app.ts` / `src/ui/controls.ts` at `./demo/<filename>`.
+3. Document the license in [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
+
+The bundled file is served same-origin, so it can feed `AnalyserNode` on GitHub Pages.
+
+---
+
+## Storage keys
+
+| Store | Key / name | Contents |
+|-------|------------|----------|
+| `localStorage` | `spectrum-player:settings:v1` | Volume, mode, color, FFT, bar count, motion |
+| `localStorage` | `spectrum-player:session:v1` | Last track metadata and seek position (not audio bytes) |
+| IndexedDB | `spectrum-player-library` / `tracks` | Imported `ArrayBuffer`s |
+
+`https://user.github.io` and `https://user.github.io/repo/` are **different origins**. Settings, session, and the library will not follow a path change. Pick one Pages URL and keep it.
+
+Private / quota-restricted browsers still run the player; persist is best-effort and the status bar will say settings will not persist if `localStorage` writes fail.
+
+---
+
 ## GitHub Pages Deployment
 
 This repository includes a GitHub Actions workflow (`.github/workflows/pages.yml`) configured to automatically build and deploy the app to GitHub Pages on every push to `main`.
@@ -73,6 +97,8 @@ This repository includes a GitHub Actions workflow (`.github/workflows/pages.yml
 1. Go to **Settings** → **Pages** in your repository.
 2. Under **Source**, select **GitHub Actions**.
 3. Push changes to `main`.
+
+The production service worker is network-first for HTML so a new deploy is not stuck on a stale `index.html`. Hashed JS/CSS are cached after the first fetch. Cache name is `spectrum-player-v2`.
 
 ---
 

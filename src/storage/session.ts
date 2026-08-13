@@ -2,7 +2,7 @@ import { SESSION_STORAGE_KEY } from './keys';
 
 export interface LastSessionV1 {
   version: 1;
-  source: 'demo' | 'imported';
+  source: 'demo' | 'imported' | 'none';
   demoId?: string;
   importedId?: string;
   title: string;
@@ -11,22 +11,34 @@ export interface LastSessionV1 {
   updatedAt: string;
 }
 
+function clampCurrentTime(currentTime: number, duration: number): number {
+  const time = Math.max(0, currentTime);
+  if (duration > 1) {
+    return Math.min(time, duration - 1);
+  }
+  return time;
+}
+
 export function loadSession(): LastSessionV1 | null {
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
-    if (parsed.version !== 1) return null;
+
+    const duration = typeof parsed.duration === 'number' && !isNaN(parsed.duration) ? Math.max(0, parsed.duration) : 0;
+    const rawTime = typeof parsed.currentTime === 'number' && !isNaN(parsed.currentTime) ? parsed.currentTime : 0;
+    const source: LastSessionV1['source'] =
+      parsed.source === 'imported' ? 'imported' : parsed.source === 'none' ? 'none' : 'demo';
 
     return {
       version: 1,
-      source: parsed.source === 'imported' ? 'imported' : 'demo',
+      source,
       demoId: typeof parsed.demoId === 'string' ? parsed.demoId : undefined,
       importedId: typeof parsed.importedId === 'string' ? parsed.importedId : undefined,
       title: typeof parsed.title === 'string' ? parsed.title : 'Unknown Track',
-      currentTime: typeof parsed.currentTime === 'number' && !isNaN(parsed.currentTime) ? Math.max(0, parsed.currentTime) : 0,
-      duration: typeof parsed.duration === 'number' && !isNaN(parsed.duration) ? Math.max(0, parsed.duration) : 0,
+      currentTime: clampCurrentTime(rawTime, duration),
+      duration,
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
     };
   } catch (err) {
@@ -37,8 +49,11 @@ export function loadSession(): LastSessionV1 | null {
 
 export function saveSession(session: Omit<LastSessionV1, 'version' | 'updatedAt'>): void {
   try {
+    const duration = Math.max(0, session.duration);
     const payload: LastSessionV1 = {
       ...session,
+      currentTime: clampCurrentTime(session.currentTime, duration),
+      duration,
       version: 1,
       updatedAt: new Date().toISOString(),
     };

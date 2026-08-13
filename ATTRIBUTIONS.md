@@ -13,4 +13,4 @@ An 8-second synthesized loop (bass pulse + mid/high sine layers) produced with F
 
 - [Vite](https://vitejs.dev/) — MIT
 - [TypeScript](https://www.typescriptlang.org/) — Apache-2.0
-- [Three.js](https://threejs.org/) — MIT (dependency present; unused until Phase 3)
+- [Three.js](https://threejs.org/) — MIT

@@ -1,10 +1,20 @@
 import { AudioPlayer, PlayerTrackInfo } from './audio/player';
-import { loadSettings, AppSettingsV1 } from './storage/settings';
+import { loadSettings, saveSettings, subscribeSettingsPersist, AppSettingsV1 } from './storage/settings';
 import { loadSession, saveSession } from './storage/session';
 import { getTrackData } from './storage/library';
 import { Spectrum3D } from './viz/spectrum-3d';
 import { Spectrum2D } from './viz/spectrum-2d';
 import { UIControls } from './ui/controls';
+
+const DEMO_TRACK: PlayerTrackInfo = {
+  title: 'Demo · pulse.mp3',
+  source: 'demo',
+  demoId: 'pulse.mp3',
+};
+
+const DEMO_URL = './demo/pulse.mp3';
+const SLOW_FRAME_MS = 24;
+const SLOW_FRAME_LIMIT = 30;
 
 export function boot(): void {
   const container = document.querySelector<HTMLElement>('#canvas-host');
@@ -16,27 +26,31 @@ export function boot(): void {
     return;
   }
 
-  // 1. Load persisted settings
   let settings: AppSettingsV1 = loadSettings();
+  let persistWarned = false;
 
-  // Helper to set status message
   const setStatusMessage = (msg: string, isError: boolean = false) => {
     statusEl.textContent = msg;
     statusEl.style.color = isError ? '#f87171' : 'var(--muted)';
   };
 
-  // 2. Instantiate Audio Player
+  subscribeSettingsPersist((ok) => {
+    if (!ok && !persistWarned) {
+      persistWarned = true;
+      setStatusMessage("Settings won't persist in this browser.", true);
+    }
+  });
+
   const player = new AudioPlayer();
   player.setVolume(settings.volume);
   player.setMuted(settings.muted);
+  player.setLoop(settings.loop);
   player.setFftSize(settings.fftSize);
 
-  // 3. Setup Visualizers (3D with 2D fallback)
   let viz3d: Spectrum3D | null = null;
   let viz2d: Spectrum2D | null = null;
 
-  const initVisualizer = () => {
-    // Clean up previous instances
+  const destroyVisualizers = () => {
     if (viz3d) {
       viz3d.destroy();
       viz3d = null;
@@ -45,6 +59,25 @@ export function boot(): void {
       viz2d.destroy();
       viz2d = null;
     }
+  };
+
+  const fallBackTo2D = (message: string) => {
+    if (viz3d) {
+      viz3d.destroy();
+      viz3d = null;
+    }
+    if (!viz2d) {
+      try {
+        viz2d = new Spectrum2D(container);
+      } catch (err) {
+        console.warn('Failed to initialize 2D canvas spectrum:', err);
+      }
+    }
+    setStatusMessage(message);
+  };
+
+  const initVisualizer = () => {
+    destroyVisualizers();
 
     if (settings.visualizerMode === '2d') {
       try {
@@ -52,83 +85,134 @@ export function boot(): void {
       } catch (err) {
         console.warn('Failed to initialize 2D canvas spectrum:', err);
       }
-    } else {
-      try {
-        viz3d = new Spectrum3D(container);
-      } catch (err) {
-        console.warn('WebGL initialization failed, falling back to 2D canvas spectrum:', err);
-        viz2d = new Spectrum2D(container);
-      }
+      return;
+    }
+
+    try {
+      viz3d = new Spectrum3D(container, {
+        onContextLost: () => fallBackTo2D('WebGL unavailable. Using 2D spectrum.'),
+      });
+    } catch (err) {
+      console.warn('WebGL initialization failed, falling back to 2D canvas spectrum:', err);
+      fallBackTo2D('WebGL unavailable. Using 2D spectrum.');
     }
   };
 
   initVisualizer();
 
-  // 4. Animation Loop (rAF loop)
   let rafId: number | null = null;
+  let lastFrameTime = 0;
+  let slowFrameCount = 0;
+  let controls!: UIControls;
 
-  const renderFrame = () => {
-    if (player.isPlaying() && !document.hidden) {
-      const bands = player.getBands(settings.barCount, settings.sensitivity);
-      if (viz3d) {
-        viz3d.render(bands, settings);
-      } else if (viz2d) {
-        viz2d.render(bands, settings);
+  const stopLoop = () => {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    lastFrameTime = 0;
+  };
+
+  const degradePerformance = () => {
+    const updates: Partial<AppSettingsV1> = {};
+    const nextBarCount = Math.max(32, Math.round(settings.barCount / 2));
+    if (nextBarCount < settings.barCount) {
+      updates.barCount = nextBarCount;
+    }
+    if (settings.visualizerMode === 'particles' || settings.visualizerMode === 'orb') {
+      updates.visualizerMode = 'bars';
+    }
+    if (Object.keys(updates).length === 0) return;
+
+    const updated = saveSettings(updates);
+    applySettings(updated);
+    controls.syncFromSettings(updated);
+    const parts = [];
+    if (updates.barCount) parts.push(`bar count ${updated.barCount}`);
+    if (updates.visualizerMode) parts.push('particles off');
+    setStatusMessage(`Performance: reduced ${parts.join(', ')}.`);
+  };
+
+  const renderFrame = (now: number) => {
+    rafId = null;
+    if (!player.isPlaying() || document.hidden) {
+      return;
+    }
+
+    if (lastFrameTime > 0) {
+      const dt = now - lastFrameTime;
+      if (dt > SLOW_FRAME_MS) {
+        slowFrameCount += 1;
+        if (slowFrameCount >= SLOW_FRAME_LIMIT) {
+          slowFrameCount = 0;
+          degradePerformance();
+        }
+      } else {
+        slowFrameCount = 0;
       }
     }
+    lastFrameTime = now;
+
+    const bands = player.getBands(settings.barCount, settings.sensitivity);
+    if (viz3d) {
+      viz3d.render(bands, settings);
+    } else if (viz2d) {
+      viz2d.render(bands, settings);
+    }
+
     rafId = requestAnimationFrame(renderFrame);
   };
 
   const startLoop = () => {
-    if (rafId === null) {
+    if (rafId === null && player.isPlaying() && !document.hidden) {
+      lastFrameTime = 0;
       rafId = requestAnimationFrame(renderFrame);
     }
   };
 
-  startLoop();
-
-  // Handle visibility change to save CPU when tab is hidden
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && rafId !== null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    } else if (!document.hidden) {
-      startLoop();
+  const applySettings = (newSettings: AppSettingsV1) => {
+    const modeChanged = settings.visualizerMode !== newSettings.visualizerMode;
+    settings = newSettings;
+    player.setVolume(settings.volume);
+    player.setMuted(settings.muted);
+    player.setLoop(settings.loop);
+    player.setFftSize(settings.fftSize);
+    if (modeChanged) {
+      initVisualizer();
     }
-  });
+  };
 
-  // Track selection handler
-  const handleTrackSelected = (src: string, trackInfo: PlayerTrackInfo) => {
+  const handleTrackSelected = (src: string, trackInfo: PlayerTrackInfo, options?: { restoreTime?: number }) => {
     player.loadSource(src, trackInfo);
     nowPlayingEl.textContent = trackInfo.title;
 
-    saveSession({
-      source: trackInfo.source,
-      demoId: trackInfo.demoId,
-      importedId: trackInfo.importedId,
-      title: trackInfo.title,
-      currentTime: 0,
-      duration: player.getDuration(),
-    });
+    if (options?.restoreTime === undefined) {
+      saveSession({
+        source: trackInfo.source,
+        demoId: trackInfo.demoId,
+        importedId: trackInfo.importedId,
+        title: trackInfo.title,
+        currentTime: 0,
+        duration: 0,
+      });
+    }
   };
 
-  // 5. Initialize UI Controls
-  const controls = new UIControls({
+  const restoreSeek = async (savedTime: number) => {
+    await player.whenMetadataReady();
+    if (player.canRestoreSeek(savedTime)) {
+      player.seek(savedTime);
+    }
+  };
+
+  controls = new UIControls({
     player,
     settings,
-    onSettingsChange: (newSettings) => {
-      const modeChanged = settings.visualizerMode !== newSettings.visualizerMode;
-      settings = newSettings;
-      player.setFftSize(settings.fftSize);
-      if (modeChanged) {
-        initVisualizer();
-      }
-    },
+    onSettingsChange: applySettings,
     onTrackSelected: handleTrackSelected,
     setStatusMessage,
   });
 
-  // 6. Restore last session or boot demo
   const restoreLastSession = async () => {
     const session = loadSession();
     if (session && session.source === 'imported' && session.importedId) {
@@ -142,40 +226,38 @@ export function boot(): void {
           importedId: track.id,
           blobUrlToRevoke: blobUrl,
         };
-
-        handleTrackSelected(blobUrl, trackInfo);
-        if (session.currentTime > 0) {
-          player.seek(session.currentTime);
-        }
+        handleTrackSelected(blobUrl, trackInfo, { restoreTime: session.currentTime });
+        await restoreSeek(session.currentTime);
         setStatusMessage(`Restored session: ${track.title}`);
         await controls.refreshLibrary();
         return;
       }
     }
 
-    // Default to demo track
-    const demoTrackInfo: PlayerTrackInfo = {
-      title: 'Demo · pulse.mp3',
-      source: 'demo',
-      demoId: 'pulse.mp3',
-    };
-    handleTrackSelected('./demo/pulse.mp3', demoTrackInfo);
-    if (session && session.currentTime > 0) {
-      player.seek(session.currentTime);
+    handleTrackSelected(DEMO_URL, DEMO_TRACK, session?.source === 'demo' ? { restoreTime: session.currentTime } : undefined);
+    if (session?.source === 'demo') {
+      await restoreSeek(session.currentTime);
     }
     setStatusMessage('Ready to play.');
+    await controls.refreshLibrary();
   };
 
   restoreLastSession().catch((err) => {
     console.warn('Session restore failed:', err);
+    handleTrackSelected(DEMO_URL, DEMO_TRACK);
     setStatusMessage('Ready to play.');
   });
 
-  // Periodic session time saver (throttled to 2 seconds)
   let lastSaveTime = 0;
-  player.subscribe(({ currentTime, duration, trackInfo }) => {
+  player.subscribe(({ isPlaying, currentTime, duration, trackInfo }) => {
+    if (isPlaying) {
+      startLoop();
+    } else {
+      stopLoop();
+    }
+
     const now = Date.now();
-    if (trackInfo && now - lastSaveTime > 2000) {
+    if (trackInfo && duration > 0 && now - lastSaveTime > 2000) {
       lastSaveTime = now;
       saveSession({
         source: trackInfo.source,
@@ -185,6 +267,14 @@ export function boot(): void {
         currentTime,
         duration,
       });
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopLoop();
+    } else if (player.isPlaying()) {
+      startLoop();
     }
   });
 }

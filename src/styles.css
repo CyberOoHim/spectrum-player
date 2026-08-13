@@ -176,6 +176,20 @@ select:focus-visible {
   gap: 0.65rem;
 }
 
+.viz-settings {
+  flex-wrap: wrap;
+}
+
+.control.checkbox {
+  cursor: pointer;
+}
+
+.control.checkbox input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
 .control {
   display: flex;
   align-items: center;

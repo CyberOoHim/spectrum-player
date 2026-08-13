@@ -2,6 +2,17 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { AppSettingsV1 } from '../storage/settings';
 
+export interface Spectrum3DOptions {
+  onContextLost?: () => void;
+}
+
+function isReducedMotion(settings: AppSettingsV1): boolean {
+  return (
+    settings.reducedMotionOverride === 'on' ||
+    (settings.reducedMotionOverride === 'system' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  );
+}
+
 export class Spectrum3D {
   private container: HTMLElement;
   private scene: THREE.Scene;
@@ -9,19 +20,17 @@ export class Spectrum3D {
   private renderer: THREE.WebGLRenderer;
   private controls: OrbitControls;
   private resizeObserver: ResizeObserver;
+  private onContextLostCb?: () => void;
 
-  // Instanced Meshes for Bars and Radial Modes
   private instancedMeshBars: THREE.InstancedMesh | null = null;
   private instancedMeshRadial: THREE.InstancedMesh | null = null;
   private dummy: THREE.Object3D = new THREE.Object3D();
   private colorHelper: THREE.Color = new THREE.Color();
 
-  // Particle System for Particles Mode
   private particleSystem: THREE.Points | null = null;
   private particlePositions: Float32Array | null = null;
   private particleOriginals: Float32Array | null = null;
 
-  // Shader / Energy Orb Mode
   private orbGroup: THREE.Group | null = null;
   private orbCoreMesh: THREE.Mesh | null = null;
   private orbWireframeMesh: THREE.Mesh | null = null;
@@ -29,18 +38,21 @@ export class Spectrum3D {
 
   private currentBarCount: number = 0;
   private isDestroyed: boolean = false;
+  private contextLost: boolean = false;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, options: Spectrum3DOptions = {}) {
     this.container = container;
+    this.onContextLostCb = options.onContextLost;
 
-    // Initialize WebGL Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(this.container.clientWidth || 800, this.container.clientHeight || 400);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.container.appendChild(this.renderer.domElement);
 
-    // Scene & Camera Setup
+    this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored);
+
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(
       45,
@@ -50,14 +62,12 @@ export class Spectrum3D {
     );
     this.camera.position.set(0, 12, 32);
 
-    // Controls Setup
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
     this.controls.maxPolarAngle = Math.PI / 2 + 0.1;
     this.controls.target.set(0, 2, 0);
 
-    // Lighting Setup
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
     this.scene.add(ambientLight);
 
@@ -69,13 +79,24 @@ export class Spectrum3D {
     pointLight.position.set(0, 5, 0);
     this.scene.add(pointLight);
 
-    // Resize Observer
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
   }
 
+  private handleContextLost = (event: Event): void => {
+    event.preventDefault();
+    this.contextLost = true;
+    this.onContextLostCb?.();
+  };
+
+  private handleContextRestored = (): void => {
+    this.contextLost = false;
+    this.currentBarCount = 0;
+    this.resize();
+  };
+
   private resize(): void {
-    if (this.isDestroyed) return;
+    if (this.isDestroyed || this.contextLost) return;
     const width = this.container.clientWidth || 800;
     const height = this.container.clientHeight || 400;
 
@@ -84,46 +105,55 @@ export class Spectrum3D {
     this.renderer.setSize(width, height);
   }
 
+  private disposeObject(object: THREE.Object3D): void {
+    this.scene.remove(object);
+    object.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.geometry) {
+        mesh.geometry.dispose();
+      }
+      const material = (mesh as THREE.Mesh).material;
+      if (Array.isArray(material)) {
+        material.forEach((item) => item.dispose());
+      } else if (material) {
+        material.dispose();
+      }
+    });
+  }
+
+  private disposeGeneratedMeshes(): void {
+    if (this.instancedMeshBars) {
+      this.disposeObject(this.instancedMeshBars);
+      this.instancedMeshBars = null;
+    }
+    if (this.instancedMeshRadial) {
+      this.disposeObject(this.instancedMeshRadial);
+      this.instancedMeshRadial = null;
+    }
+    if (this.particleSystem) {
+      this.disposeObject(this.particleSystem);
+      this.particleSystem = null;
+      this.particlePositions = null;
+      this.particleOriginals = null;
+    }
+    if (this.orbGroup) {
+      this.disposeObject(this.orbGroup);
+      this.orbGroup = null;
+      this.orbCoreMesh = null;
+      this.orbWireframeMesh = null;
+      this.orbOriginalPositions = null;
+    }
+    this.currentBarCount = 0;
+  }
+
   private setupMeshes(barCount: number): void {
     if (this.currentBarCount === barCount && this.instancedMeshBars && this.instancedMeshRadial) {
       return;
     }
 
-    // Clean up existing meshes
-    if (this.instancedMeshBars) {
-      this.scene.remove(this.instancedMeshBars);
-      this.instancedMeshBars.geometry.dispose();
-      (this.instancedMeshBars.material as THREE.Material).dispose();
-      this.instancedMeshBars = null;
-    }
-    if (this.instancedMeshRadial) {
-      this.scene.remove(this.instancedMeshRadial);
-      this.instancedMeshRadial.geometry.dispose();
-      (this.instancedMeshRadial.material as THREE.Material).dispose();
-      this.instancedMeshRadial = null;
-    }
-    if (this.particleSystem) {
-      this.scene.remove(this.particleSystem);
-      this.particleSystem.geometry.dispose();
-      (this.particleSystem.material as THREE.Material).dispose();
-      this.particleSystem = null;
-    }
-    if (this.orbGroup) {
-      this.scene.remove(this.orbGroup);
-      if (this.orbCoreMesh) {
-        this.orbCoreMesh.geometry.dispose();
-        (this.orbCoreMesh.material as THREE.Material).dispose();
-      }
-      if (this.orbWireframeMesh) {
-        this.orbWireframeMesh.geometry.dispose();
-        (this.orbWireframeMesh.material as THREE.Material).dispose();
-      }
-      this.orbGroup = null;
-    }
-
+    this.disposeGeneratedMeshes();
     this.currentBarCount = barCount;
 
-    // 1. Box Geometry & Material for Instanced Bars
     const boxGeometry = new THREE.BoxGeometry(0.35, 1, 0.35);
     const boxMaterial = new THREE.MeshStandardMaterial({
       roughness: 0.2,
@@ -136,7 +166,6 @@ export class Spectrum3D {
     this.scene.add(this.instancedMeshBars);
     this.scene.add(this.instancedMeshRadial);
 
-    // 2. Setup Particle System
     const particleCount = Math.max(300, barCount * 8);
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
@@ -174,7 +203,6 @@ export class Spectrum3D {
     this.particleOriginals = originals;
     this.scene.add(this.particleSystem);
 
-    // 3. Setup Shader / Energy Orb
     this.orbGroup = new THREE.Group();
     const orbCoreGeom = new THREE.IcosahedronGeometry(4.5, 4);
     const orbCoreMat = new THREE.MeshStandardMaterial({
@@ -186,7 +214,6 @@ export class Spectrum3D {
     this.orbCoreMesh = new THREE.Mesh(orbCoreGeom, orbCoreMat);
     this.orbGroup.add(this.orbCoreMesh);
 
-    // Save original position attributes for vertex displacement
     const posAttr = orbCoreGeom.attributes.position;
     this.orbOriginalPositions = new Float32Array(posAttr.array);
 
@@ -204,30 +231,27 @@ export class Spectrum3D {
   }
 
   public render(bands: Float32Array, settings: AppSettingsV1): void {
-    if (this.isDestroyed) return;
+    if (this.isDestroyed || this.contextLost) return;
 
     const barCount = bands.length;
     if (barCount === 0) return;
 
     this.setupMeshes(barCount);
 
-    const mode = settings.visualizerMode;
-    const isReducedMotion =
-      settings.reducedMotionOverride === 'on' ||
-      (settings.reducedMotionOverride === 'system' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const reduced = isReducedMotion(settings);
+    const requestedMode = settings.visualizerMode;
+    const mode =
+      reduced && (requestedMode === 'particles' || requestedMode === 'orb') ? 'bars' : requestedMode;
 
-    // Controls Auto-rotate
-    this.controls.autoRotate = settings.cameraAutoRotate && !isReducedMotion;
+    this.controls.autoRotate = settings.cameraAutoRotate && !reduced;
     this.controls.autoRotateSpeed = 1.2;
     this.controls.update();
 
-    // Toggle Visibility based on Mode
     if (this.instancedMeshBars) this.instancedMeshBars.visible = mode === 'bars';
     if (this.instancedMeshRadial) this.instancedMeshRadial.visible = mode === 'radial';
     if (this.particleSystem) this.particleSystem.visible = mode === 'particles';
     if (this.orbGroup) this.orbGroup.visible = mode === 'orb';
 
-    // 1. Render 3D Bars Mode
     if (mode === 'bars' && this.instancedMeshBars) {
       const spacing = 0.55;
       const startX = -((barCount * spacing) / 2);
@@ -242,15 +266,12 @@ export class Spectrum3D {
         this.dummy.updateMatrix();
 
         this.instancedMeshBars.setMatrixAt(i, this.dummy.matrix);
-
-        // Color computation
         this.applyColor(this.instancedMeshBars, i, val, i / barCount, settings.colorMode);
       }
       this.instancedMeshBars.instanceMatrix.needsUpdate = true;
       if (this.instancedMeshBars.instanceColor) this.instancedMeshBars.instanceColor.needsUpdate = true;
     }
 
-    // 2. Render 3D Radial Mode
     if (mode === 'radial' && this.instancedMeshRadial) {
       const radius = 7;
 
@@ -268,16 +289,13 @@ export class Spectrum3D {
         this.dummy.updateMatrix();
 
         this.instancedMeshRadial.setMatrixAt(i, this.dummy.matrix);
-
         this.applyColor(this.instancedMeshRadial, i, val, i / barCount, settings.colorMode);
       }
       this.instancedMeshRadial.instanceMatrix.needsUpdate = true;
       if (this.instancedMeshRadial.instanceColor) this.instancedMeshRadial.instanceColor.needsUpdate = true;
     }
 
-    // 3. Render 3D Particles Mode
-    if (mode === 'particles' && this.particleSystem && this.particlePositions && this.particleOriginals) {
-      // Calculate overall energy bands
+    if (!reduced && mode === 'particles' && this.particleSystem && this.particlePositions && this.particleOriginals) {
       let bass = 0, mid = 0, treble = 0;
       const third = Math.floor(barCount / 3);
 
@@ -308,8 +326,7 @@ export class Spectrum3D {
       this.particleSystem.geometry.attributes.position.needsUpdate = true;
     }
 
-    // 4. Render 3D Shader / Energy Orb Mode
-    if (mode === 'orb' && this.orbGroup && this.orbCoreMesh && this.orbOriginalPositions) {
+    if (!reduced && mode === 'orb' && this.orbGroup && this.orbCoreMesh && this.orbOriginalPositions) {
       let bass = 0, mid = 0, treble = 0;
       const third = Math.floor(barCount / 3);
 
@@ -335,7 +352,6 @@ export class Spectrum3D {
         const bandIdx = i % barCount;
         const energy = bands[bandIdx];
         const noise = Math.sin(ox * 2 + time * 3) * Math.cos(oy * 2 + time * 2) * (bass * 1.5 + energy);
-
         const factor = 1 + noise * 0.2 + energy * 0.3;
 
         posArray[i * 3] = ox * factor;
@@ -344,7 +360,6 @@ export class Spectrum3D {
       }
       posAttr.needsUpdate = true;
 
-      // Rotate wireframe sphere
       if (this.orbWireframeMesh) {
         this.orbWireframeMesh.rotation.y = time * 0.5;
         this.orbWireframeMesh.rotation.x = time * 0.3;
@@ -352,7 +367,6 @@ export class Spectrum3D {
         this.orbWireframeMesh.scale.set(wireScale, wireScale, wireScale);
       }
 
-      // Color updates for Orb Core
       const mat = this.orbCoreMesh.material as THREE.MeshStandardMaterial;
       if (settings.colorMode === 'mono') {
         mat.color.setHex(0x38bdf8);
@@ -376,10 +390,9 @@ export class Spectrum3D {
     if (colorMode === 'mono') {
       this.colorHelper.setHex(0x6ee7ff);
     } else if (colorMode === 'mood') {
-      const hue = 0.7 + value * 0.2; // Violet to Pink/Cyan
+      const hue = 0.7 + value * 0.2;
       this.colorHelper.setHSL(hue, 0.85, 0.55);
     } else {
-      // Spectrum gradient (Red -> Green -> Blue -> Purple)
       const hue = ratio * 0.75;
       this.colorHelper.setHSL(hue, 0.9, 0.5);
     }
@@ -387,10 +400,15 @@ export class Spectrum3D {
   }
 
   public destroy(): void {
+    if (this.isDestroyed) return;
     this.isDestroyed = true;
     this.resizeObserver.disconnect();
     this.controls.dispose();
 
+    this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost);
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored);
+
+    this.disposeGeneratedMeshes();
     this.scene.clear();
     this.renderer.dispose();
 

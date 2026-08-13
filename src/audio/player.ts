@@ -35,6 +35,8 @@ export class AudioPlayer {
     this.audio = new Audio();
     this.audio.setAttribute('playsinline', 'true');
     this.audio.crossOrigin = 'anonymous';
+    this.audio.volume = 1;
+    this.audio.muted = false;
 
     this.setupAudioListeners();
     this.setupMediaSessionHandlers();
@@ -55,7 +57,9 @@ export class AudioPlayer {
   private setupMediaSessionHandlers(): void {
     if ('mediaSession' in navigator) {
       try {
-        navigator.mediaSession.setActionHandler('play', () => this.play());
+        navigator.mediaSession.setActionHandler('play', () => {
+          void this.play().catch(() => {});
+        });
         navigator.mediaSession.setActionHandler('pause', () => this.pause());
         navigator.mediaSession.setActionHandler('seekto', (details) => {
           if (details.seekTime !== undefined && details.seekTime !== null) {
@@ -78,6 +82,12 @@ export class AudioPlayer {
     }
   }
 
+  private applyGain(): void {
+    if (this.gainNode) {
+      this.gainNode.gain.value = this.isMuted ? 0 : this.volume;
+    }
+  }
+
   public setLoop(loop: boolean): void {
     this.audio.loop = loop;
     this.notifyState();
@@ -92,7 +102,6 @@ export class AudioPlayer {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.audioCtx = new AudioContextClass();
 
-      // Create Web Audio graph once
       this.sourceNode = this.audioCtx.createMediaElementSource(this.audio);
       this.analyserNode = this.audioCtx.createAnalyser();
       this.analyserNode.fftSize = this.currentFftSize;
@@ -100,21 +109,18 @@ export class AudioPlayer {
       this.frequencyBuffer = new Uint8Array(this.analyserNode.frequencyBinCount);
 
       this.gainNode = this.audioCtx.createGain();
-      this.gainNode.gain.value = this.isMuted ? 0 : this.volume;
+      // Element volume/mute would scale MediaElementSource before the analyser.
+      this.audio.volume = 1;
+      this.audio.muted = false;
+      this.applyGain();
 
-      // Tap analyser before master gain
       this.sourceNode.connect(this.analyserNode);
       this.analyserNode.connect(this.gainNode);
       this.gainNode.connect(this.audioCtx.destination);
     }
-
-    if (this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume().catch((err) => console.warn('AudioContext resume failed:', err));
-    }
   }
 
   public loadSource(src: string, trackInfo: PlayerTrackInfo): void {
-    // Revoke previous blob URL if any
     if (this.currentTrackInfo?.blobUrlToRevoke) {
       URL.revokeObjectURL(this.currentTrackInfo.blobUrlToRevoke);
     }
@@ -125,9 +131,36 @@ export class AudioPlayer {
     this.notifyState();
   }
 
+  public whenMetadataReady(timeoutMs = 8000): Promise<void> {
+    const duration = this.audio.duration;
+    if (isFinite(duration) && duration > 0) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      const finish = () => {
+        this.audio.removeEventListener('loadedmetadata', finish);
+        this.audio.removeEventListener('error', finish);
+        window.clearTimeout(timer);
+        resolve();
+      };
+      const timer = window.setTimeout(finish, timeoutMs);
+      this.audio.addEventListener('loadedmetadata', finish);
+      this.audio.addEventListener('error', finish);
+    });
+  }
+
+  public canRestoreSeek(seconds: number): boolean {
+    const duration = this.audio.duration;
+    return isFinite(duration) && duration > 1 && isFinite(seconds) && seconds > 0 && seconds < duration - 1;
+  }
+
   public async play(): Promise<void> {
     this.ensureAudioContext();
     try {
+      if (this.audioCtx && this.audioCtx.state === 'suspended') {
+        await this.audioCtx.resume();
+      }
       await this.audio.play();
     } catch (err) {
       console.warn('Audio play error:', err);
@@ -138,38 +171,44 @@ export class AudioPlayer {
 
   public pause(): void {
     this.audio.pause();
+    if (this.audioCtx && this.audioCtx.state === 'running') {
+      this.audioCtx.suspend().catch((err) => console.warn('AudioContext suspend failed:', err));
+    }
   }
 
   public togglePlayPause(): Promise<void> | void {
     if (this.audio.paused) {
       return this.play();
-    } else {
-      this.pause();
     }
+    this.pause();
   }
 
   public seek(seconds: number): void {
     if (isFinite(seconds) && !isNaN(seconds)) {
-      this.audio.currentTime = Math.max(0, Math.min(seconds, this.audio.duration || 0));
+      const duration = this.audio.duration;
+      const max = isFinite(duration) && duration > 0 ? duration : 0;
+      this.audio.currentTime = Math.max(0, Math.min(seconds, max));
     }
   }
 
   public setVolume(vol: number): void {
     this.volume = Math.max(0, Math.min(1, vol));
-    this.audio.volume = this.volume;
-    if (this.gainNode) {
-      this.gainNode.gain.value = this.isMuted ? 0 : this.volume;
-    }
+    this.applyGain();
     this.notifyState();
   }
 
   public setMuted(muted: boolean): void {
     this.isMuted = muted;
-    this.audio.muted = muted;
-    if (this.gainNode) {
-      this.gainNode.gain.value = this.isMuted ? 0 : this.volume;
-    }
+    this.applyGain();
     this.notifyState();
+  }
+
+  public getVolume(): number {
+    return this.volume;
+  }
+
+  public isMutedState(): boolean {
+    return this.isMuted;
   }
 
   public setFftSize(fftSize: number): void {
@@ -185,7 +224,7 @@ export class AudioPlayer {
   }
 
   public isPlaying(): boolean {
-    return !this.audio.paused && !this.audio.ended && this.audio.readyState > 2;
+    return !this.audio.paused && !this.audio.ended;
   }
 
   public getCurrentTime(): number {
