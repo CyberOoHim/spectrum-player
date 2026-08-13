@@ -41,6 +41,7 @@ export class UIControls {
   private barCountSelect: HTMLSelectElement | null;
   private fftSizeSelect: HTMLSelectElement | null;
   private lavaSpeedInput: HTMLInputElement | null;
+  private lavaSpeedControl: HTMLElement | null;
   private reducedMotionSelect: HTMLSelectElement | null;
   private autoRotateInput: HTMLInputElement | null;
   private librarySelect: HTMLSelectElement;
@@ -74,6 +75,7 @@ export class UIControls {
     this.barCountSelect = document.querySelector<HTMLSelectElement>('#bar-count');
     this.fftSizeSelect = document.querySelector<HTMLSelectElement>('#fft-size');
     this.lavaSpeedInput = document.querySelector<HTMLInputElement>('#lava-speed');
+    this.lavaSpeedControl = document.querySelector<HTMLElement>('#lava-speed-control');
     this.reducedMotionSelect = document.querySelector<HTMLSelectElement>('#reduced-motion');
     this.autoRotateInput = document.querySelector<HTMLInputElement>('#auto-rotate');
     this.librarySelect = document.querySelector<HTMLSelectElement>('#library-select')!;
@@ -133,6 +135,9 @@ export class UIControls {
     if (this.barCountSelect) this.barCountSelect.value = String(s.barCount);
     if (this.fftSizeSelect) this.fftSizeSelect.value = String(s.fftSize);
     if (this.lavaSpeedInput) this.lavaSpeedInput.value = s.lavaSpeed.toString();
+    if (this.lavaSpeedControl) {
+      this.lavaSpeedControl.style.display = s.visualizerMode === 'lava' ? 'flex' : 'none';
+    }
     if (this.reducedMotionSelect) this.reducedMotionSelect.value = s.reducedMotionOverride;
     if (this.autoRotateInput) this.autoRotateInput.checked = s.cameraAutoRotate;
   }
@@ -187,6 +192,9 @@ export class UIControls {
 
     this.modeSelect.addEventListener('change', () => {
       const mode = this.modeSelect.value as AppSettingsV1['visualizerMode'];
+      if (this.lavaSpeedControl) {
+        this.lavaSpeedControl.style.display = mode === 'lava' ? 'flex' : 'none';
+      }
       this.persistSettings({ visualizerMode: mode });
     });
 
