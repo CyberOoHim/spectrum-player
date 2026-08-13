@@ -6,6 +6,8 @@ export class Spectrum2D {
   private container: HTMLElement;
   private resizeObserver: ResizeObserver;
 
+  private dpr: number = 1;
+
   constructor(container: HTMLElement) {
     this.container = container;
     this.canvas = document.createElement('canvas');
@@ -28,25 +30,25 @@ export class Spectrum2D {
   public resize(): void {
     const width = this.container.clientWidth || 800;
     const height = this.container.clientHeight || 400;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-    this.canvas.width = width * dpr;
-    this.canvas.height = height * dpr;
-    this.ctx.scale(dpr, dpr);
+    this.canvas.width = width * this.dpr;
+    this.canvas.height = height * this.dpr;
+    this.ctx.scale(this.dpr, this.dpr);
   }
 
   public render(bands: Float32Array, settings: AppSettingsV1): void {
-    const width = this.canvas.width / (Math.min(window.devicePixelRatio || 1, 2));
-    const height = this.canvas.height / (Math.min(window.devicePixelRatio || 1, 2));
+    const width = this.canvas.width / this.dpr;
+    const height = this.canvas.height / this.dpr;
 
     this.ctx.clearRect(0, 0, width, height);
 
     const count = bands.length;
     if (count === 0) return;
 
-    const gap = 3;
+    const gap = Math.max(1, Math.min(3, Math.floor(width / (count * 2))));
     const totalGapWidth = gap * (count + 1);
-    const barWidth = Math.max(2, (width - totalGapWidth) / count);
+    const barWidth = Math.max(1, (width - totalGapWidth) / count);
 
     for (let i = 0; i < count; i++) {
       const val = bands[i];

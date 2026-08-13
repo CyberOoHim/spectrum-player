@@ -67,6 +67,7 @@ export class UIControls {
   private currentTrackMetadataList: TrackMetadata[] = [];
   private isUserSeeking: boolean = false;
   private dragCounter: number = 0;
+  private lastMediaTitle: string = '';
 
   constructor(config: UIControlsConfig) {
     this.config = config;
@@ -548,16 +549,26 @@ export class UIControls {
       }
 
       if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({ title });
-        navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-        try {
-          navigator.mediaSession.setActionHandler('previoustrack', () => this.playPrevTrack());
-          navigator.mediaSession.setActionHandler('nexttrack', () => this.playNextTrack());
-        } catch {
-          // Action handlers optional
+        if (title !== this.lastMediaTitle) {
+          this.lastMediaTitle = title;
+          try {
+            navigator.mediaSession.metadata = new MediaMetadata({ title });
+          } catch {
+            // MediaMetadata optional
+          }
         }
+        navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
       }
     });
+
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.setActionHandler('previoustrack', () => this.playPrevTrack());
+        navigator.mediaSession.setActionHandler('nexttrack', () => this.playNextTrack());
+      } catch {
+        // Action handlers optional
+      }
+    }
   }
 
   private async importAudioFile(file: File): Promise<void> {
@@ -566,7 +577,6 @@ export class UIControls {
       return;
     }
 
-    const previous = this.config.player.getTrackInfo();
     let savedId: string | null = null;
 
     try {
@@ -587,16 +597,12 @@ export class UIControls {
 
       try {
         await this.config.player.play();
-      } catch {
-        await deleteTrack(savedTrack.id);
-        savedId = null;
-        await this.restorePreviousOrDemo(previous);
-        this.config.setStatusMessage('Could not play that file. Library unchanged.', true);
-        await this.refreshLibrary();
-        return;
+        this.config.setStatusMessage(`Loaded & playing "${savedTrack.title}".`);
+      } catch (playErr) {
+        console.warn('Autoplay prevented or interrupted:', playErr);
+        this.config.setStatusMessage(`Loaded "${savedTrack.title}". Click Play to start.`);
       }
 
-      this.config.setStatusMessage(`Loaded & playing "${savedTrack.title}".`);
       await this.refreshLibrary();
     } catch (err: unknown) {
       if (savedId) {
@@ -611,24 +617,6 @@ export class UIControls {
     }
   }
 
-  private async restorePreviousOrDemo(previous: PlayerTrackInfo | null): Promise<void> {
-    if (previous?.source === 'imported' && previous.importedId) {
-      const trackData = await getTrackData(previous.importedId);
-      if (trackData) {
-        const blob = new Blob([trackData.data], { type: trackData.mimeType });
-        const blobUrl = URL.createObjectURL(blob);
-        this.config.onTrackSelected(blobUrl, {
-          title: trackData.title,
-          source: 'imported',
-          importedId: trackData.id,
-          blobUrlToRevoke: blobUrl,
-        });
-        return;
-      }
-    }
-
-    this.config.onTrackSelected(DEMO_URL, previous?.source === 'demo' ? previous : DEMO_TRACK);
-  }
 
   private updateTimeDisplay(current: number, total: number): void {
     this.timeDisplay.textContent = `${this.formatTime(current)} / ${this.formatTime(total)}`;

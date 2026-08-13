@@ -779,13 +779,24 @@ export class LavaLamp {
       for (let j = i + 1; j < this.blobs.length; j++) {
         const a = this.blobs[i];
         const b = this.blobs[j];
-        const delta = a.pos.clone().sub(b.pos);
-        const dist = delta.length();
+        const dx = a.pos.x - b.pos.x;
+        const dy = a.pos.y - b.pos.y;
+        const dz = a.pos.z - b.pos.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
         const minDist = (a.radius + b.radius) * 0.42;
-        if (dist > 0.001 && dist < minDist) {
-          delta.multiplyScalar(((minDist - dist) * 0.08) / dist);
-          a.pos.add(delta);
-          b.pos.sub(delta);
+        const minDistSq = minDist * minDist;
+        if (distSq > 1e-6 && distSq < minDistSq) {
+          const dist = Math.sqrt(distSq);
+          const factor = ((minDist - dist) * 0.08) / dist;
+          const shiftX = dx * factor;
+          const shiftY = dy * factor;
+          const shiftZ = dz * factor;
+          a.pos.x += shiftX;
+          a.pos.y += shiftY;
+          a.pos.z += shiftZ;
+          b.pos.x -= shiftX;
+          b.pos.y -= shiftY;
+          b.pos.z -= shiftZ;
         }
       }
     }
@@ -793,10 +804,9 @@ export class LavaLamp {
 
   private updateUniforms(settings: AppSettingsV1): void {
     const u = this.waxMaterial.uniforms;
-    const camLocal = this.camera.position.clone();
+    u.uCamPos.value.copy(this.camera.position);
     this.waxMesh.updateWorldMatrix(true, false);
-    this.waxMesh.worldToLocal(camLocal);
-    u.uCamPos.value.copy(camLocal);
+    this.waxMesh.worldToLocal(u.uCamPos.value);
     u.uTime.value = this.simTime;
     u.uEnergy.value = this.smoothEnergy;
     u.uBass.value = this.smoothBass;

@@ -13,27 +13,34 @@ export function getBandsFromData(
     return output;
   }
 
-  // Use logarithmic indexing to group bins
+  // Use continuous logarithmic indexing with smooth interpolation
   // Human pitch hearing is logarithmic (20 Hz to 20 kHz)
-  const minLog = Math.log(1);
-  const maxLog = Math.log(totalBins);
+  const minFreq = 0.5;
+  const maxFreq = totalBins;
+  const ratio = maxFreq / minFreq;
 
   for (let i = 0; i < barCount; i++) {
-    const startLog = minLog + (i / barCount) * (maxLog - minLog);
-    const endLog = minLog + ((i + 1) / barCount) * (maxLog - minLog);
+    const startPos = minFreq * Math.pow(ratio, i / barCount) - minFreq;
+    const endPos = minFreq * Math.pow(ratio, (i + 1) / barCount) - minFreq;
 
-    let startBin = Math.floor(Math.exp(startLog)) - 1;
-    let endBin = Math.floor(Math.exp(endLog)) - 1;
-
-    startBin = Math.max(0, Math.min(startBin, totalBins - 1));
-    endBin = Math.max(startBin, Math.min(endBin, totalBins - 1));
+    const startBin = Math.max(0, Math.min(Math.floor(startPos), totalBins - 1));
+    const endBin = Math.max(startBin, Math.min(Math.floor(endPos), totalBins - 1));
 
     let sum = 0;
     let count = 0;
 
-    for (let bin = startBin; bin <= endBin; bin++) {
-      sum += frequencyData[bin];
-      count++;
+    if (startBin === endBin) {
+      const frac = startPos - Math.floor(startPos);
+      const nextBin = Math.min(totalBins - 1, startBin + 1);
+      const v0 = frequencyData[startBin];
+      const v1 = frequencyData[nextBin];
+      sum = v0 * (1 - frac) + v1 * frac;
+      count = 1;
+    } else {
+      for (let bin = startBin; bin <= endBin; bin++) {
+        sum += frequencyData[bin];
+        count++;
+      }
     }
 
     const average = count > 0 ? sum / count : 0;

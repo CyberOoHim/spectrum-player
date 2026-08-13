@@ -1,4 +1,4 @@
-import { INDEXEDDB_NAME, INDEXEDDB_VERSION, INDEXEDDB_STORE_TRACKS } from './keys';
+import { INDEXEDDB_NAME, INDEXEDDB_VERSION, INDEXEDDB_STORE_TRACKS, INDEXEDDB_STORE_METADATA } from './keys';
 
 export interface ImportedTrack {
   id: string;
@@ -20,10 +20,38 @@ function openDB(): Promise<IDBDatabase> {
     }
     const request = indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
       if (!db.objectStoreNames.contains(INDEXEDDB_STORE_TRACKS)) {
         db.createObjectStore(INDEXEDDB_STORE_TRACKS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(INDEXEDDB_STORE_METADATA)) {
+        db.createObjectStore(INDEXEDDB_STORE_METADATA, { keyPath: 'id' });
+      }
+
+      // If upgrading from v1 to v2, backfill the metadata store from existing tracks
+      if (event.oldVersion < 2 && request.transaction) {
+        try {
+          const trackStore = request.transaction.objectStore(INDEXEDDB_STORE_TRACKS);
+          const metaStore = request.transaction.objectStore(INDEXEDDB_STORE_METADATA);
+          const cursorReq = trackStore.openCursor();
+          cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (cursor) {
+              const val = cursor.value as ImportedTrack;
+              metaStore.put({
+                id: val.id,
+                title: val.title,
+                mimeType: val.mimeType,
+                byteLength: val.byteLength,
+                createdAt: val.createdAt,
+              });
+              cursor.continue();
+            }
+          };
+        } catch (err) {
+          console.warn('Failed to migrate existing IndexedDB tracks to metadata store:', err);
+        }
       }
     };
 
@@ -39,23 +67,31 @@ export async function saveTrack(file: File): Promise<ImportedTrack> {
 
   const arrayBuffer = await file.arrayBuffer();
   const id = `local:${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-  const track: ImportedTrack = {
+  const metadata: TrackMetadata = {
     id,
     title: file.name,
     mimeType: file.type || 'audio/mpeg',
     byteLength: file.size,
     createdAt: new Date().toISOString(),
+  };
+
+  const track: ImportedTrack = {
+    ...metadata,
     data: arrayBuffer,
   };
 
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(INDEXEDDB_STORE_TRACKS, 'readwrite');
-    const store = tx.objectStore(INDEXEDDB_STORE_TRACKS);
-    const req = store.put(track);
+    const tx = db.transaction([INDEXEDDB_STORE_TRACKS, INDEXEDDB_STORE_METADATA], 'readwrite');
+    const trackStore = tx.objectStore(INDEXEDDB_STORE_TRACKS);
+    const metaStore = tx.objectStore(INDEXEDDB_STORE_METADATA);
 
-    req.onsuccess = () => resolve(track);
-    req.onerror = () => reject(req.error || new Error('Failed to save track to IndexedDB'));
+    trackStore.put(track);
+    metaStore.put(metadata);
+
+    tx.oncomplete = () => resolve(track);
+    tx.onerror = () => reject(tx.error || new Error('Failed to save track to IndexedDB'));
+    tx.onabort = () => reject(tx.error || new Error('IndexedDB transaction aborted'));
   });
 }
 
@@ -63,29 +99,31 @@ export async function getAllTrackMetadata(): Promise<TrackMetadata[]> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(INDEXEDDB_STORE_TRACKS, 'readonly');
-      const store = tx.objectStore(INDEXEDDB_STORE_TRACKS);
-      const req = store.openCursor();
+      // Read from lightweight metadata store
+      const tx = db.transaction(INDEXEDDB_STORE_METADATA, 'readonly');
+      const store = tx.objectStore(INDEXEDDB_STORE_METADATA);
+      const req = store.getAll ? store.getAll() : store.openCursor();
       const list: TrackMetadata[] = [];
 
-      req.onsuccess = () => {
-        const cursor = req.result;
-        if (cursor) {
-          const val = cursor.value as ImportedTrack;
-          list.push({
-            id: val.id,
-            title: val.title,
-            mimeType: val.mimeType,
-            byteLength: val.byteLength,
-            createdAt: val.createdAt,
-          });
-          cursor.continue();
-        } else {
-          // Sort by creation date descending
-          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          resolve(list);
-        }
-      };
+      if ('getAll' in store) {
+        req.onsuccess = () => {
+          const results = (req.result as TrackMetadata[]) || [];
+          results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          resolve(results);
+        };
+      } else {
+        req.onsuccess = () => {
+          const cursor = (req as IDBRequest<IDBCursorWithValue | null>).result;
+          if (cursor) {
+            list.push(cursor.value as TrackMetadata);
+            cursor.continue();
+          } else {
+            list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            resolve(list);
+          }
+        };
+      }
+
       req.onerror = () => reject(req.error || new Error('Failed to fetch track list from IndexedDB'));
     });
   } catch (err) {
@@ -114,29 +152,31 @@ export async function getTrackData(id: string): Promise<ImportedTrack | null> {
 export async function deleteTrack(id: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(INDEXEDDB_STORE_TRACKS, 'readwrite');
-    const store = tx.objectStore(INDEXEDDB_STORE_TRACKS);
-    const req = store.delete(id);
+    const tx = db.transaction([INDEXEDDB_STORE_TRACKS, INDEXEDDB_STORE_METADATA], 'readwrite');
+    tx.objectStore(INDEXEDDB_STORE_TRACKS).delete(id);
+    tx.objectStore(INDEXEDDB_STORE_METADATA).delete(id);
 
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error || new Error(`Failed to delete track ${id}`));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error(`Failed to delete track ${id}`));
+    tx.onabort = () => reject(tx.error || new Error(`Delete track transaction aborted for ${id}`));
   });
 }
 
 export async function clearAllTracks(): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(INDEXEDDB_STORE_TRACKS, 'readwrite');
-    const store = tx.objectStore(INDEXEDDB_STORE_TRACKS);
-    const req = store.clear();
+    const tx = db.transaction([INDEXEDDB_STORE_TRACKS, INDEXEDDB_STORE_METADATA], 'readwrite');
+    tx.objectStore(INDEXEDDB_STORE_TRACKS).clear();
+    tx.objectStore(INDEXEDDB_STORE_METADATA).clear();
 
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error || new Error('Failed to clear tracks from IndexedDB'));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('Failed to clear tracks from IndexedDB'));
+    tx.onabort = () => reject(tx.error || new Error('Clear tracks transaction aborted'));
   });
 }
 
 export async function getStorageEstimate(): Promise<{ usedMB: number; totalMB: number } | null> {
-  if (navigator.storage && navigator.storage.estimate) {
+  if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.estimate === 'function') {
     try {
       const estimate = await navigator.storage.estimate();
       const usedMB = (estimate.usage || 0) / (1024 * 1024);

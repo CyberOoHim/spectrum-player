@@ -121,7 +121,7 @@ export class AudioPlayer {
   }
 
   public loadSource(src: string, trackInfo: PlayerTrackInfo): void {
-    if (this.currentTrackInfo?.blobUrlToRevoke) {
+    if (this.currentTrackInfo?.blobUrlToRevoke && this.currentTrackInfo.blobUrlToRevoke !== trackInfo.blobUrlToRevoke) {
       URL.revokeObjectURL(this.currentTrackInfo.blobUrlToRevoke);
     }
 
