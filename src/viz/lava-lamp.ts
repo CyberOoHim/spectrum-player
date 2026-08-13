@@ -319,8 +319,6 @@ void main() {
     col += glow * wax * 0.35;
   }
 
-  float vignette = smoothstep(2.4, 1.1, length(p.xz));
-  col *= 0.78 + 0.22 * vignette;
   col = max(col, vec3(0.0));
 
   gl_FragColor = vec4(col, 1.0);
@@ -387,18 +385,18 @@ export class LavaLamp {
 
     const width = this.container.clientWidth || 800;
     const height = this.container.clientHeight || 400;
-    this.camera = new THREE.PerspectiveCamera(32, width / height, 0.1, 80);
-    this.camera.position.set(0.35, 7.15, 16.4);
+    this.camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 120);
+    this.camera.position.set(0.22, 6.85, 24.5);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.06;
     this.controls.enablePan = false;
-    this.controls.minDistance = 11;
-    this.controls.maxDistance = 26;
-    this.controls.minPolarAngle = Math.PI * 0.28;
-    this.controls.maxPolarAngle = Math.PI * 0.58;
-    this.controls.target.set(0, 6.55, 0);
+    this.controls.minDistance = 16;
+    this.controls.maxDistance = 42;
+    this.controls.minPolarAngle = Math.PI * 0.32;
+    this.controls.maxPolarAngle = Math.PI * 0.62;
+    this.controls.target.set(0, 6.85, 0);
     this.controls.autoRotateSpeed = 0.45;
 
     this.brassMaps = makeBrassMaps();
@@ -420,7 +418,7 @@ export class LavaLamp {
         uBass: { value: 0 },
         uMid: { value: 0 },
         uTreble: { value: 0 },
-        uLiquid: { value: new THREE.Color(0x0b0610) },
+        uLiquid: { value: new THREE.Color(0x1a0c1c) },
         uHeaterPos: { value: new THREE.Vector3(0, -4.2, 0) },
         uHeaterColor: { value: new THREE.Color(0xff6a33) },
         uGoo: { value: 0.55 },
@@ -579,19 +577,19 @@ export class LavaLamp {
     const glass = new THREE.Mesh(
       new THREE.LatheGeometry(glassPts, 80),
       new THREE.MeshPhysicalMaterial({
-        color: 0x120a18,
-        metalness: 0.04,
-        roughness: 0.045,
-        transmission: 0.92,
-        thickness: 0.42,
-        ior: 1.48,
+        color: 0x2a1828,
+        metalness: 0.02,
+        roughness: 0.06,
+        transmission: 0.97,
+        thickness: 0.18,
+        ior: 1.45,
         transparent: true,
         opacity: 1,
-        envMapIntensity: 1.6,
+        envMapIntensity: 0.85,
         clearcoat: 1,
-        clearcoatRoughness: 0.06,
-        attenuationColor: new THREE.Color(0x2a1028),
-        attenuationDistance: 2.4,
+        clearcoatRoughness: 0.08,
+        attenuationColor: new THREE.Color(0x6a3a58),
+        attenuationDistance: 8.5,
         depthWrite: false,
       })
     );
@@ -871,11 +869,39 @@ export class LavaLamp {
     this.renderer.render(this.scene, this.camera);
   }
 
+  private frameLamp(): void {
+    const lampMinY = 0;
+    const lampMaxY = 13.75;
+    const lampRadius = 2.7;
+    const pad = 0.7;
+    const fitH = lampMaxY - lampMinY + pad * 2;
+    const fitW = lampRadius * 2 + pad * 2;
+    const centerY = (lampMinY + lampMaxY) / 2;
+
+    this.controls.target.set(0, centerY, 0);
+
+    const vFov = THREE.MathUtils.degToRad(this.camera.fov);
+    const aspect = Math.max(this.camera.aspect, 0.2);
+    const distH = fitH / 2 / Math.tan(vFov / 2);
+    const distW = fitW / 2 / (Math.tan(vFov / 2) * aspect);
+    const dist = Math.max(distH, distW);
+
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    if (offset.lengthSq() < 1e-6) {
+      offset.set(0.18, 0.12, 1);
+    }
+    offset.normalize().multiplyScalar(dist);
+    this.camera.position.copy(this.controls.target).add(offset);
+    this.controls.minDistance = dist * 0.94;
+    this.controls.maxDistance = dist * 2.4;
+  }
+
   private resize(): void {
     if (this.isDestroyed || this.contextLost) return;
     const width = this.container.clientWidth || 800;
     const height = this.container.clientHeight || 400;
     this.camera.aspect = width / height;
+    this.frameLamp();
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
   }
