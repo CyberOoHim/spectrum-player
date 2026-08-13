@@ -431,16 +431,16 @@ export class LavaLamp {
 
     const waxGeom = new THREE.CylinderGeometry(1.86, 1.86, 9.3, 48, 1, true);
     this.waxMesh = new THREE.Mesh(waxGeom, this.waxMaterial);
-    this.waxMesh.position.y = 7.2;
+    this.waxMesh.position.y = 6.0;
     this.waxMesh.renderOrder = 1;
     this.lampGroup.add(this.waxMesh);
 
     this.heaterLight = new THREE.PointLight(0xff6a33, 6.5, 14, 1.6);
-    this.heaterLight.position.set(0, 2.55, 0);
+    this.heaterLight.position.set(0, 1.25, 0);
     this.scene.add(this.heaterLight);
 
     this.waxLight = new THREE.PointLight(0xff66aa, 2.4, 12, 1.8);
-    this.waxLight.position.set(0, 7.2, 0);
+    this.waxLight.position.set(0, 6.0, 0);
     this.scene.add(this.waxLight);
 
     this.spawnBlobs();
@@ -530,26 +530,24 @@ export class LavaLamp {
     const brassDark = this.brassMaterial(1.4, 1, true);
 
     const footPts = [
-      new THREE.Vector2(2.55, 0.0),
-      new THREE.Vector2(2.62, 0.1),
-      new THREE.Vector2(2.48, 0.28),
-      new THREE.Vector2(1.72, 0.72),
-      new THREE.Vector2(1.22, 1.22),
-      new THREE.Vector2(1.08, 1.62),
-      new THREE.Vector2(1.18, 1.92),
-      new THREE.Vector2(1.68, 2.08),
-      new THREE.Vector2(1.82, 2.2),
-      new THREE.Vector2(1.62, 2.28),
+      new THREE.Vector2(1.85, 0.0),
+      new THREE.Vector2(1.88, 0.06),
+      new THREE.Vector2(1.76, 0.16),
+      new THREE.Vector2(1.38, 0.45),
+      new THREE.Vector2(1.28, 0.75),
+      new THREE.Vector2(1.42, 0.95),
+      new THREE.Vector2(1.58, 1.08),
+      new THREE.Vector2(1.52, 1.14),
     ];
     const foot = new THREE.Mesh(new THREE.LatheGeometry(footPts, 80), brass);
     this.lampGroup.add(foot);
 
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(1.82, 1.98, 0.2, 48), brassDark);
-    collar.position.y = 2.32;
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(1.52, 1.62, 0.1, 48), brassDark);
+    collar.position.y = 1.16;
     this.lampGroup.add(collar);
 
     const port = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.045, 0.16, 6, 12),
+      new THREE.CapsuleGeometry(0.04, 0.14, 6, 12),
       new THREE.MeshStandardMaterial({
         color: 0x1a1208,
         emissive: 0x2a1808,
@@ -558,21 +556,21 @@ export class LavaLamp {
       })
     );
     port.rotation.z = Math.PI / 2;
-    port.position.set(0, 0.38, 2.38);
+    port.position.set(0, 0.28, 1.82);
     this.lampGroup.add(port);
 
     const glassPts = [
-      new THREE.Vector2(0.02, 2.38),
-      new THREE.Vector2(1.72, 2.4),
-      new THREE.Vector2(1.94, 2.58),
-      new THREE.Vector2(2.06, 3.15),
-      new THREE.Vector2(2.1, 4.8),
-      new THREE.Vector2(2.1, 8.6),
-      new THREE.Vector2(2.06, 10.35),
-      new THREE.Vector2(1.92, 11.25),
-      new THREE.Vector2(1.58, 11.78),
-      new THREE.Vector2(1.05, 12.08),
-      new THREE.Vector2(0.02, 12.16),
+      new THREE.Vector2(0.02, 1.2),
+      new THREE.Vector2(1.68, 1.22),
+      new THREE.Vector2(1.90, 1.4),
+      new THREE.Vector2(2.04, 1.95),
+      new THREE.Vector2(2.08, 3.6),
+      new THREE.Vector2(2.08, 7.4),
+      new THREE.Vector2(2.04, 9.15),
+      new THREE.Vector2(1.90, 10.05),
+      new THREE.Vector2(1.56, 10.58),
+      new THREE.Vector2(1.04, 10.88),
+      new THREE.Vector2(0.02, 10.96),
     ];
 
     const glass = new THREE.Mesh(
@@ -609,24 +607,23 @@ export class LavaLamp {
     this.lampGroup.add(glass);
 
     const capPts = [
-      new THREE.Vector2(0.08, 12.22),
-      new THREE.Vector2(1.38, 12.24),
-      new THREE.Vector2(1.52, 12.38),
-      new THREE.Vector2(1.42, 12.62),
-      new THREE.Vector2(1.08, 12.86),
-      new THREE.Vector2(0.55, 13.0),
-      new THREE.Vector2(0.22, 13.08),
-      new THREE.Vector2(0.16, 13.18),
+      new THREE.Vector2(0.06, 11.0),
+      new THREE.Vector2(1.36, 11.02),
+      new THREE.Vector2(1.45, 11.12),
+      new THREE.Vector2(1.22, 11.22),
+      new THREE.Vector2(0.72, 11.28),
+      new THREE.Vector2(0.28, 11.32),
+      new THREE.Vector2(0.06, 11.34),
     ];
     const cap = new THREE.Mesh(new THREE.LatheGeometry(capPts, 64), brass);
     this.lampGroup.add(cap);
 
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.16, 20), brassDark);
-    neck.position.y = 13.22;
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.08, 20), brassDark);
+    neck.position.y = 11.38;
     this.lampGroup.add(neck);
 
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.26, 28, 20), brass);
-    knob.position.y = 13.46;
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.16, 24, 16), brass);
+    knob.position.y = 11.48;
     this.lampGroup.add(knob);
 
     const heater = new THREE.Mesh(
@@ -640,7 +637,7 @@ export class LavaLamp {
       })
     );
     heater.rotation.x = -Math.PI / 2;
-    heater.position.y = 2.48;
+    heater.position.y = 1.25;
     this.lampGroup.add(heater);
   }
 
@@ -858,12 +855,13 @@ export class LavaLamp {
     const rawDt = this.lastTime ? Math.min(0.05, (now - this.lastTime) / 1000) : 0.016;
     this.lastTime = now;
 
-    const speed = typeof settings.lavaSpeed === 'number' ? settings.lavaSpeed : 1.0;
+    const speed = typeof settings.lavaSpeed === 'number' ? settings.lavaSpeed : 0.8;
     const dt = rawDt * speed;
     this.simTime += dt;
 
     const reduced = isReducedMotion(settings);
     this.controls.autoRotate = settings.cameraAutoRotate && !reduced;
+    this.controls.autoRotateSpeed = 1.5;
     this.controls.update();
 
     this.updatePhysics(dt, bands, reduced);
@@ -873,11 +871,10 @@ export class LavaLamp {
 
   private frameLamp(): void {
     const lampMinY = 0;
-    const lampMaxY = 13.75;
-    const lampRadius = 2.7;
-    const pad = 0.7;
-    const fitH = lampMaxY - lampMinY + pad * 2;
-    const fitW = lampRadius * 2 + pad * 2;
+    const lampMaxY = 11.6;
+    const lampRadius = 1.9;
+    const fitH = lampMaxY - lampMinY;
+    const fitW = lampRadius * 2;
     const centerY = (lampMinY + lampMaxY) / 2;
 
     this.controls.target.set(0, centerY, 0);
@@ -886,7 +883,7 @@ export class LavaLamp {
     const aspect = Math.max(this.camera.aspect, 0.2);
     const distH = fitH / 2 / Math.tan(vFov / 2);
     const distW = fitW / 2 / (Math.tan(vFov / 2) * aspect);
-    const dist = Math.max(distH, distW);
+    const dist = Math.max(distH, distW) * 0.72;
 
     const offset = this.camera.position.clone().sub(this.controls.target);
     if (offset.lengthSq() < 1e-6) {
@@ -894,8 +891,8 @@ export class LavaLamp {
     }
     offset.normalize().multiplyScalar(dist);
     this.camera.position.copy(this.controls.target).add(offset);
-    this.controls.minDistance = dist * 0.94;
-    this.controls.maxDistance = dist * 2.4;
+    this.controls.minDistance = dist * 0.4;
+    this.controls.maxDistance = dist * 2.5;
   }
 
   private resize(): void {

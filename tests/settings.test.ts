@@ -56,11 +56,11 @@ describe('Settings Storage Module', () => {
   });
 
   it('persists lava visualizer mode and lavaSpeed', () => {
-    saveSettings({ visualizerMode: 'lava', colorMode: 'mood', lavaSpeed: 1.8 });
+    saveSettings({ visualizerMode: 'lava', colorMode: 'mood', lavaSpeed: 1.2 });
     const settings = loadSettings();
     expect(settings.visualizerMode).toBe('lava');
     expect(settings.colorMode).toBe('mood');
-    expect(settings.lavaSpeed).toBe(1.8);
+    expect(settings.lavaSpeed).toBe(1.2);
   });
 
   it('falls back to bars for unknown visualizer modes', () => {
