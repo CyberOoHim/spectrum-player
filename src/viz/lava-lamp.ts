@@ -428,7 +428,7 @@ export class LavaLamp {
       side: THREE.FrontSide,
     });
 
-    const waxGeom = new THREE.BoxGeometry(3.7, 9.3, 3.7);
+    const waxGeom = new THREE.CylinderGeometry(1.86, 1.86, 9.3, 48, 1, true);
     this.waxMesh = new THREE.Mesh(waxGeom, this.waxMaterial);
     this.waxMesh.position.y = 7.2;
     this.waxMesh.renderOrder = 1;
@@ -576,39 +576,36 @@ export class LavaLamp {
 
     const glass = new THREE.Mesh(
       new THREE.LatheGeometry(glassPts, 80),
-      new THREE.MeshPhysicalMaterial({
-        color: 0x2a1828,
-        metalness: 0.02,
-        roughness: 0.06,
-        transmission: 0.97,
-        thickness: 0.18,
-        ior: 1.45,
+      new THREE.ShaderMaterial({
+        uniforms: {},
+        vertexShader: /* glsl */ `
+          varying vec3 vWorldPos;
+          varying vec3 vNormal;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vec4 world = modelMatrix * vec4(position, 1.0);
+            vWorldPos = world.xyz;
+            gl_Position = projectionMatrix * viewMatrix * world;
+          }
+        `,
+        fragmentShader: /* glsl */ `
+          varying vec3 vWorldPos;
+          varying vec3 vNormal;
+          void main() {
+            vec3 n = normalize(vNormal);
+            vec3 view = normalize(cameraPosition - vWorldPos);
+            float fresnel = pow(1.0 - abs(dot(n, view)), 3.2);
+            vec3 tint = vec3(0.78, 0.86, 0.94);
+            gl_FragColor = vec4(tint, 0.03 + fresnel * 0.22);
+          }
+        `,
         transparent: true,
-        opacity: 1,
-        envMapIntensity: 0.85,
-        clearcoat: 1,
-        clearcoatRoughness: 0.08,
-        attenuationColor: new THREE.Color(0x6a3a58),
-        attenuationDistance: 8.5,
         depthWrite: false,
+        side: THREE.FrontSide,
       })
     );
     glass.renderOrder = 2;
     this.lampGroup.add(glass);
-
-    const highlight = new THREE.Mesh(
-      new THREE.CylinderGeometry(2.02, 2.02, 8.6, 40, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.035,
-        side: THREE.FrontSide,
-        depthWrite: false,
-      })
-    );
-    highlight.position.set(-0.55, 7.3, 1.55);
-    highlight.scale.set(0.18, 1, 1);
-    this.lampGroup.add(highlight);
 
     const capPts = [
       new THREE.Vector2(0.08, 12.22),
@@ -810,14 +807,14 @@ export class LavaLamp {
     u.uGoo.value = 0.45 + this.smoothEnergy * 0.7;
 
     if (settings.colorMode === 'mono') {
-      u.uLiquid.value.setHex(0x140806);
+      u.uLiquid.value.setHex(0x2a120c);
       u.uHeaterColor.value.setHex(0xff5a1f);
     } else if (settings.colorMode === 'mood') {
-      const mood = new THREE.Color().setHSL(0.88 + this.smoothBass * 0.1, 0.55, 0.18);
-      u.uLiquid.value.copy(mood).multiplyScalar(0.35);
+      const mood = new THREE.Color().setHSL(0.88 + this.smoothBass * 0.1, 0.55, 0.28);
+      u.uLiquid.value.copy(mood).multiplyScalar(0.7);
       u.uHeaterColor.value.setHSL(0.95 + this.smoothBass * 0.08, 0.85, 0.55);
     } else {
-      u.uLiquid.value.setHex(0x0b0610);
+      u.uLiquid.value.setHex(0x241028);
       u.uHeaterColor.value.setHex(0xff6a33);
     }
 
