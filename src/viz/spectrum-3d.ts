@@ -351,8 +351,9 @@ export class Spectrum3D {
 
         const bandIdx = i % barCount;
         const energy = bands[bandIdx];
+        const idleWave = Math.sin(ox * 1.5 + time * 2) * Math.cos(oy * 1.5 + time * 1.5) * 0.06;
         const noise = Math.sin(ox * 2 + time * 3) * Math.cos(oy * 2 + time * 2) * (bass * 1.5 + energy);
-        const factor = 1 + noise * 0.2 + energy * 0.3;
+        const factor = 1 + idleWave + noise * 0.2 + energy * 0.3;
 
         posArray[i * 3] = ox * factor;
         posArray[i * 3 + 1] = oy * factor;

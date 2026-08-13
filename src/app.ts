@@ -51,7 +51,7 @@ export function boot(): void {
   let viz3d: Spectrum3D | null = null;
   let viz2d: Spectrum2D | null = null;
   let vizLava: LavaLamp | null = null;
-  const idleBands = new Float32Array(64);
+  let idleBands = new Float32Array(settings.barCount);
 
   const destroyVisualizers = () => {
     if (viz3d) {
@@ -175,9 +175,7 @@ export function boot(): void {
   };
 
   const shouldKeepLoop = () => {
-    if (document.hidden) return false;
-    if (player.isPlaying()) return true;
-    return settings.visualizerMode === 'lava' && vizLava !== null;
+    return !document.hidden;
   };
 
   const renderFrame = (now: number) => {
@@ -226,6 +224,9 @@ export function boot(): void {
   const applySettings = (newSettings: AppSettingsV1) => {
     const modeChanged = settings.visualizerMode !== newSettings.visualizerMode;
     settings = newSettings;
+    if (idleBands.length !== settings.barCount) {
+      idleBands = new Float32Array(settings.barCount);
+    }
     player.setVolume(settings.volume);
     player.setMuted(settings.muted);
     player.setLoop(settings.loop);
