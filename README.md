@@ -28,7 +28,10 @@ A short CC0 loop lives at `public/demo/pulse.mp3`. License notes are in [ATTRIBU
 
 ## GitHub Pages
 
+Repo: [CyberOoHim/spectrum-player](https://github.com/CyberOoHim/spectrum-player)
+
 1. Repo Settings → Pages → Source: **GitHub Actions**.
 2. Push to `main`. `.github/workflows/pages.yml` installs, tests, builds, and deploys `dist`.
+3. Site URL after the first successful deploy: `https://cyberoohim.github.io/spectrum-player/`
 
 Storage keys and imported-file rules are defined in the plan. Do not store audio in `localStorage`.
