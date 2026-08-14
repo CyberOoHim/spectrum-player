@@ -6,7 +6,7 @@ import { SceneRuntime } from '../scene-runtime';
 
 const MAX_COALS = 36;
 const MAX_SPARKS = 90;
-const MAX_SMOKE = 25;
+const MAX_SMOKE = 8;
 
 interface Spark {
   pos: THREE.Vector3;
@@ -98,21 +98,35 @@ vec2 boxIntersect(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax) {
   return vec2(enter, exit);
 }
 
-// Realistic Blackbody-inspired fire palette with glowing coals, tongues, and blue base
-vec3 campfirePalette(float heat, float yNorm, float hue, float sat) {
-  vec3 blueBase = vec3(0.08, 0.22, 0.85);
-  vec3 deepEmber = vec3(0.24, 0.025, 0.005);
-  vec3 richOrange = vec3(0.98, 0.32, 0.02);
-  vec3 goldYellow = vec3(1.0, 0.78, 0.18);
-  vec3 whiteHot = vec3(1.0, 0.97, 0.88);
+// Multi-spectral realistic flame palette: light blue base, light green mineral licks, warm gold yellow, blazing orange, scarlet red, deep crimson
+vec3 campfirePalette(float heat, float y, float r, float noiseVal, float hue, float sat) {
+  vec3 lightBlue = vec3(0.08, 0.48, 0.98);
+  vec3 lightGreen = vec3(0.18, 0.95, 0.42);
+  vec3 brightYellow = vec3(1.0, 0.86, 0.12);
+  vec3 blazingOrange = vec3(1.0, 0.35, 0.01);
+  vec3 scarletRed = vec3(0.92, 0.08, 0.01);
+  vec3 crimsonRed = vec3(0.46, 0.015, 0.005);
 
-  vec3 col = mix(deepEmber, richOrange, smoothstep(0.0, 0.35, heat));
-  col = mix(col, goldYellow, smoothstep(0.32, 0.72, heat));
-  col = mix(col, whiteHot, smoothstep(0.68, 1.0, heat));
+  vec3 col;
+  if (y < 0.16) {
+    // Base layer: Light blue core with light green mineral flame licks on outer fringes
+    float greenEdge = smoothstep(0.06, 0.28, r + (noiseVal - 0.5) * 0.18);
+    vec3 baseCol = mix(lightBlue, lightGreen, greenEdge);
+    col = mix(baseCol, brightYellow, smoothstep(0.05, 0.16, y));
+  } else if (y < 0.42) {
+    // Lower body: Glowing golden yellow transitioning into blazing fiery orange
+    col = mix(brightYellow, blazingOrange, smoothstep(0.16, 0.42, y));
+  } else if (y < 0.75) {
+    // Mid to upper jumping tongues: Blazing orange to scarlet red
+    col = mix(blazingOrange, scarletRed, smoothstep(0.42, 0.75, y));
+  } else {
+    // Flame tips: Scarlet red into deep rich crimson red
+    col = mix(scarletRed, crimsonRed, smoothstep(0.75, 1.05, y));
+  }
 
-  // Subtle blue base at very root of the fire
-  float blueFactor = (1.0 - smoothstep(0.0, 0.12, yNorm)) * smoothstep(0.4, 0.9, heat) * 0.45;
-  col = mix(col, blueBase, blueFactor);
+  // Incandescent core (small subtle highlight at highest heat only, preserves rich chromatic saturation)
+  float coreGlow = smoothstep(0.92, 1.0, heat) * (1.0 - smoothstep(0.22, 0.52, y));
+  col = mix(col, vec3(1.0, 0.98, 0.90), coreGlow * 0.35);
 
   // Hue and saturation shifts for color modes
   float angle = hue * 6.28318;
@@ -121,7 +135,7 @@ vec3 campfirePalette(float heat, float yNorm, float hue, float sat) {
     0.05 * sin(angle + 2.1),
     0.12 * cos(angle)
   );
-  col = mix(col, clamp(col + shift, 0.0, 2.0), sat * 0.55);
+  col = mix(col, clamp(col + shift, 0.0, 1.5), sat * 0.5);
   return max(col, vec3(0.0));
 }
 
@@ -200,11 +214,10 @@ void main() {
     density += shape * n2 * (0.12 + uTreble * 0.45);
     density = max(density, 0.0);
 
-    float heat = clamp(shape * (1.28 - y * 0.88) * (0.42 + n1 * 0.75 + uMid * 0.32 + core * 0.4), 0.0, 1.0);
-    vec3 col = campfirePalette(heat, y, uHue, uSat);
-    col += vec3(1.0, 0.9, 0.5) * pow(heat, 4.0) * (0.22 + uTreble * 0.45 + uPulse * 0.18);
+    float heat = clamp(shape * (1.25 - y * 0.82) * (0.45 + n1 * 0.7 + uMid * 0.3 + core * 0.4), 0.0, 1.0);
+    vec3 col = campfirePalette(heat, y, r, n2, uHue, uSat);
 
-    float absorb = 1.0 - exp(-density * dt * 7.2);
+    float absorb = 1.0 - exp(-density * dt * 6.5);
     acc += trans * col * absorb;
     trans *= 1.0 - absorb;
   }
@@ -259,7 +272,7 @@ varying float vAlpha;
 void main() {
   vAlpha = aAlpha;
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = max(1.0, aSize * (160.0 / max(-mv.z, 0.1)) * uPixelRatio);
+  gl_PointSize = max(1.0, aSize * (150.0 / max(-mv.z, 0.1)) * uPixelRatio);
   gl_Position = projectionMatrix * mv;
 }
 `;
@@ -273,8 +286,8 @@ void main() {
   float d = length(p);
   if (d > 1.0) discard;
   float glow = pow(1.0 - d, 2.2);
-  vec3 smokeCol = vec3(0.18, 0.15, 0.16);
-  gl_FragColor = vec4(smokeCol, glow * vAlpha * 0.45);
+  vec3 smokeCol = vec3(0.88, 0.88, 0.92);
+  gl_FragColor = vec4(smokeCol, glow * vAlpha * 0.15);
 
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -769,6 +782,14 @@ export class EmberHearth {
       const log = new THREE.Mesh(new THREE.CylinderGeometry(spec.r * 0.88, spec.r, spec.len, 10, 3), mat);
       log.position.copy(spec.pos);
       log.rotation.copy(spec.rot);
+
+      // Ensure every log rests firmly above the ground plane without penetrating beneath
+      log.updateMatrixWorld(true);
+      const bbox = new THREE.Box3().setFromObject(log);
+      if (bbox.min.y < 0.015) {
+        log.position.y += 0.015 - bbox.min.y;
+      }
+
       this.runtime.scene.add(log);
     }
   }
@@ -879,11 +900,11 @@ export class EmberHearth {
 
     for (let i = 0; i < MAX_SMOKE; i++) {
       this.smokeParticles.push({
-        pos: new THREE.Vector3(0, 0.4 + Math.random() * 1.5, 0),
-        vel: new THREE.Vector3((Math.random() - 0.5) * 0.04, 0.18 + Math.random() * 0.22, (Math.random() - 0.5) * 0.04),
-        life: Math.random() * 2.5,
-        maxLife: 2.2 + Math.random() * 1.5,
-        size: 0.08 + Math.random() * 0.14,
+        pos: new THREE.Vector3((Math.random() - 0.5) * 0.12, 0.85 + Math.random() * 1.2, (Math.random() - 0.5) * 0.12),
+        vel: new THREE.Vector3((Math.random() - 0.5) * 0.03, 0.14 + Math.random() * 0.18, (Math.random() - 0.5) * 0.03),
+        life: Math.random() * 2.8,
+        maxLife: 2.5 + Math.random() * 1.5,
+        size: 0.05 + Math.random() * 0.08,
       });
     }
     return { geometry, material, positions, sizes, alphas };
@@ -1002,25 +1023,25 @@ export class EmberHearth {
         p.life += dt;
         if (p.life >= p.maxLife) {
           p.life = 0;
-          p.pos.set((Math.random() - 0.5) * 0.15, 0.45 + Math.random() * 0.15, (Math.random() - 0.5) * 0.15);
+          p.pos.set((Math.random() - 0.5) * 0.12, 0.85 + Math.random() * 0.25, (Math.random() - 0.5) * 0.12);
           p.vel.set(
-            (Math.random() - 0.5) * 0.05,
-            0.2 + Math.random() * 0.25 + this.energy.bass * 0.15,
-            (Math.random() - 0.5) * 0.05
+            (Math.random() - 0.5) * 0.03,
+            0.15 + Math.random() * 0.18 + this.energy.bass * 0.1,
+            (Math.random() - 0.5) * 0.03
           );
         } else {
           p.pos.addScaledVector(p.vel, dt);
-          p.vel.x += Math.sin(this.simTime * 1.8 + i) * 0.012 * dt;
-          p.vel.z += Math.cos(this.simTime * 1.5 + i) * 0.012 * dt;
+          p.vel.x += Math.sin(this.simTime * 1.8 + i) * 0.008 * dt;
+          p.vel.z += Math.cos(this.simTime * 1.5 + i) * 0.008 * dt;
         }
       }
 
       const progress = p.life / p.maxLife;
-      const alpha = Math.sin(progress * Math.PI) * 0.35;
+      const alpha = Math.sin(progress * Math.PI) * 0.22;
       this.smokePositions[i * 3] = p.pos.x;
       this.smokePositions[i * 3 + 1] = p.pos.y;
       this.smokePositions[i * 3 + 2] = p.pos.z;
-      this.smokeSizes[i] = p.size * (1.0 + progress * 2.2);
+      this.smokeSizes[i] = p.size * (1.0 + progress * 1.6);
       this.smokeAlphas[i] = alpha;
     }
     this.smokeGeom.getAttribute('position').needsUpdate = true;

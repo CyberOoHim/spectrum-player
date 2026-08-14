@@ -391,6 +391,11 @@ export class GroveLightwells {
     const log = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 2.2, 12), logMat);
     log.rotation.set(0.12, 0.65, 1.48);
     log.position.set(-0.65, 0.12, 0.45);
+    log.updateMatrixWorld(true);
+    const logBbox = new THREE.Box3().setFromObject(log);
+    if (logBbox.min.y < 0.01) {
+      log.position.y += 0.01 - logBbox.min.y;
+    }
     scene.add(log);
 
     // Forest ambient lighting
