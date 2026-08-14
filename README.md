@@ -11,7 +11,7 @@ A high-performance standalone web audio player and interactive 3D frequency spec
   - **3D Radial**: Circular spectrum ring.
   - **3D Particles**: Audio-reactive particle system responding to bass, mid, and high bands.
   - **Lumina Lava**: A realistic lava-lamp EQ — gooey metaball wax in a glass bottle, driven by bass/mid/treble.
-  - **Ember Hearth**: A cozy fireplace — brick, oak logs, volumetric fire, and rising sparks that breathe with the music.
+  - **Ember Hearth**: An open night campfire — stacked oak logs, volumetric dancing flames, and rising sparks you can orbit. The fire breathes and dances with the music.
   - **2D Canvas Fallback**: Lightweight 2D canvas mode for low-power devices or WebGL fallback.
 - **Audio Playback & Analysis**:
   - Pre-gain analyser node so visuals remain active even when listening at low volume.
@@ -112,4 +112,4 @@ The bundled demo track (`pulse.mp3`) is CC0 (Public Domain). Licensing details a
 
 ## Specification & Plan
 
-See [docs/plan.md](docs/plan.md) for the complete architecture document and phase breakdown.
+See [docs/plan.md](docs/plan.md) for the complete architecture document and phase breakdown. Atmosphere visualizer scenes (Ember Hearth proof, parked rain / tide / grove / pond) are in [docs/atmosphere-scenes.md](docs/atmosphere-scenes.md).

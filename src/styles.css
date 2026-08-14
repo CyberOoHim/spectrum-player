@@ -268,9 +268,9 @@ optgroup {
 
 #canvas-host.atmosphere-stage[data-scene="hearth"] {
   background:
-    radial-gradient(62% 48% at 50% 88%, #5a220e 0%, transparent 58%),
-    radial-gradient(38% 32% at 50% 62%, #2a1208 0%, transparent 70%),
-    linear-gradient(180deg, #100806 0%, #070403 100%);
+    radial-gradient(56% 40% at 50% 92%, #6a2810 0%, transparent 55%),
+    radial-gradient(36% 28% at 50% 70%, #1a0c08 0%, transparent 70%),
+    linear-gradient(180deg, #0a0d18 0%, #07060a 55%, #0a0604 100%);
 }
 
 .canvas-floating-actions {

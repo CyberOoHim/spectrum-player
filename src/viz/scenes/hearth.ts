@@ -4,8 +4,8 @@ import { AudioEnergySmoother } from '../audio-energy';
 import { atmosphereSpeed, SceneVisualizerOptions } from '../scene';
 import { SceneRuntime } from '../scene-runtime';
 
-const MAX_COALS = 18;
-const MAX_SPARKS = 48;
+const MAX_COALS = 24;
+const MAX_SPARKS = 80;
 
 interface Spark {
   pos: THREE.Vector3;
@@ -85,13 +85,13 @@ vec2 boxIntersect(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax) {
 }
 
 vec3 fireTint(float t, float hue, float sat) {
-  vec3 ember = vec3(0.18, 0.025, 0.005);
-  vec3 orange = vec3(0.95, 0.28, 0.03);
-  vec3 gold = vec3(1.0, 0.72, 0.22);
-  vec3 white = vec3(1.0, 0.94, 0.78);
-  vec3 col = mix(ember, orange, smoothstep(0.0, 0.35, t));
-  col = mix(col, gold, smoothstep(0.28, 0.7, t));
-  col = mix(col, white, smoothstep(0.62, 1.0, t));
+  vec3 ember = vec3(0.20, 0.02, 0.004);
+  vec3 orange = vec3(0.98, 0.26, 0.02);
+  vec3 gold = vec3(1.0, 0.70, 0.16);
+  vec3 white = vec3(1.0, 0.95, 0.78);
+  vec3 col = mix(ember, orange, smoothstep(0.0, 0.32, t));
+  col = mix(col, gold, smoothstep(0.26, 0.68, t));
+  col = mix(col, white, smoothstep(0.58, 1.0, t));
 
   float angle = hue * 6.28318;
   vec3 shift = vec3(
@@ -112,44 +112,60 @@ void main() {
   float t0 = max(hit.x, 0.0);
   float t1 = hit.y;
   vec3 boxSize = max(uBoxMax - uBoxMin, vec3(0.001));
-  float height = mix(0.42, 1.0, clamp(uHeight, 0.0, 1.0));
+  float height = mix(0.40, 1.0, clamp(uHeight, 0.0, 1.0));
 
   vec3 acc = vec3(0.0);
   float trans = 1.0;
   int steps = clamp(uSteps, 16, 56);
   float dt = (t1 - t0) / float(steps);
+  float dance = uTime * (1.05 + uEnergy * 0.85 + uPulse * 0.35);
 
   for (int i = 0; i < 56; i++) {
     if (i >= steps || trans < 0.012) break;
     float t = t0 + (float(i) + 0.5) * dt;
     vec3 p = ro + rd * t;
-    vec3 local = (p - uBoxMin) / boxSize;
 
-    float y = local.y / height;
-    if (y < 0.0 || y > 1.12) continue;
-
-    float radial = length((local.xz - vec3(0.5, 0.0, 0.52).xz) * vec2(1.15, 1.35));
-    float waist = mix(0.48, 0.12, smoothstep(0.0, 1.0, y));
-    float shape = smoothstep(waist + 0.12, waist - 0.08, radial);
-    shape *= smoothstep(-0.04, 0.08, local.y) * (1.0 - smoothstep(0.82, 1.08, y));
+    float y = p.y / max(boxSize.y * height, 0.001);
+    if (y < -0.04 || y > 1.14) continue;
 
     vec3 adv = p;
-    adv.y -= uTime * (0.55 + uBass * 0.45 + uPulse * 0.25);
-    adv.x += sin(uTime * 0.7 + p.y * 3.4) * 0.08;
-    adv.z += cos(uTime * 0.55 + p.y * 2.8) * 0.06;
-    float n = fbm(adv * vec3(2.6, 1.35, 2.6));
-    float flicker = fbm(adv * 5.4 + vec3(0.0, -uTime * 1.8, 0.0));
+    adv.y -= uTime * (1.05 + uBass * 0.85 + uPulse * 0.5);
+    adv.x += sin(dance * 1.55 + p.y * 3.6) * (0.07 + uBass * 0.06);
+    adv.z += cos(dance * 1.28 + p.y * 2.9) * (0.06 + uBass * 0.05);
+    float n = fbm(adv * vec3(2.55, 1.18, 2.55));
+    float flicker = fbm(adv * 5.6 + vec3(0.0, -uTime * 2.35, 0.0));
 
-    float dens = shape * (0.28 + n * 0.95) * (0.55 + uEnergy * 0.7 + uPulse * 0.35);
-    dens *= 1.0 - smoothstep(0.55, 1.05, y);
-    dens += shape * flicker * uTreble * 0.18;
+    float swayX = sin(dance * 1.72 + p.y * 2.8 + n * 2.4) * (0.055 + uBass * 0.07 + uPulse * 0.05);
+    float swayZ = cos(dance * 1.38 + p.y * 2.3 + flicker * 2.0) * (0.05 + uBass * 0.06);
+    vec2 xz = p.xz - vec2(swayX, swayZ);
+    xz += vec2(n - 0.5, flicker - 0.5) * (0.15 + uMid * 0.1);
+
+    float r = length(xz);
+    float ang = atan(xz.y, xz.x);
+
+    float lobeA = pow(0.5 + 0.5 * sin(ang * 5.0 + dance * 2.55 + n * 5.4 + uPulse * 2.4), 2.15);
+    float lobeB = pow(0.5 + 0.5 * sin(ang * 3.0 - dance * 1.72 + flicker * 4.2 + uMid * 1.6), 1.7);
+    float lobes = 0.52 * lobeA + 0.48 * lobeB;
+
+    float baseR = mix(0.36 + uBass * 0.14 + uPulse * 0.08, 0.034, pow(clamp(y, 0.0, 1.0), 0.66));
+    float radius = baseR * mix(0.68, 1.28, lobes);
+    float shape = smoothstep(radius + 0.11, radius - 0.045, r);
+    shape *= smoothstep(-0.03, 0.09, y) * (1.0 - smoothstep(0.76, 1.07, y));
+
+    float coreR = mix(0.15 + uBass * 0.04, 0.022, clamp(y, 0.0, 1.0));
+    float core = smoothstep(coreR, coreR * 0.15, r) * (1.0 - smoothstep(0.52, 0.92, y));
+    shape = max(shape, core * 0.96);
+
+    float dens = shape * (0.24 + n * 1.02) * (0.48 + uEnergy * 0.95 + uPulse * 0.48);
+    dens *= 1.0 - smoothstep(0.42, 1.02, y);
+    dens += shape * flicker * (0.10 + uTreble * 0.34);
     dens = max(dens, 0.0);
 
-    float heat = clamp(shape * (1.15 - y * 0.85) * (0.45 + n * 0.7 + uMid * 0.25), 0.0, 1.0);
+    float heat = clamp(shape * (1.22 - y * 0.92) * (0.38 + n * 0.72 + uMid * 0.28 + core * 0.35), 0.0, 1.0);
     vec3 col = fireTint(heat, uHue, uSat);
-    col += vec3(1.0, 0.85, 0.45) * pow(heat, 4.0) * (0.15 + uTreble * 0.35);
+    col += vec3(1.0, 0.86, 0.42) * pow(heat, 3.8) * (0.16 + uTreble * 0.4 + uPulse * 0.12);
 
-    float absorb = 1.0 - exp(-dens * dt * 6.4);
+    float absorb = 1.0 - exp(-dens * dt * 6.8);
     acc += trans * col * absorb;
     trans *= 1.0 - absorb;
   }
@@ -163,9 +179,40 @@ void main() {
 }
 `;
 
+const SPARK_VERT = /* glsl */ `
+attribute float aSize;
+attribute vec3 color;
+uniform float uPixelRatio;
+varying vec3 vColor;
+void main() {
+  vColor = color;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = max(1.2, aSize * (220.0 / max(-mv.z, 0.08)) * uPixelRatio);
+  gl_Position = projectionMatrix * mv;
+}
+`;
+
+const SPARK_FRAG = /* glsl */ `
+precision highp float;
+varying vec3 vColor;
+void main() {
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float d = length(p);
+  if (d > 1.0) discard;
+  float glow = pow(1.0 - d, 1.65);
+  float core = pow(max(0.0, 1.0 - d * 2.4), 2.2);
+  vec3 col = vColor * glow + vec3(1.0, 0.92, 0.7) * core;
+  gl_FragColor = vec4(col, glow);
+
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
 function canvasTexture(
   size: number,
-  draw: (ctx: CanvasRenderingContext2D, size: number) => void
+  draw: (ctx: CanvasRenderingContext2D, size: number) => void,
+  colorSpace: typeof THREE.SRGBColorSpace | typeof THREE.NoColorSpace = THREE.SRGBColorSpace
 ): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -176,117 +223,91 @@ function canvasTexture(
   const map = new THREE.CanvasTexture(canvas);
   map.wrapS = THREE.RepeatWrapping;
   map.wrapT = THREE.RepeatWrapping;
-  map.colorSpace = THREE.SRGBColorSpace;
+  map.colorSpace = colorSpace;
   map.anisotropy = 8;
   map.needsUpdate = true;
   return map;
 }
 
-function makeBrickMaps(): { map: THREE.CanvasTexture; roughness: THREE.CanvasTexture } {
-  const map = canvasTexture(512, (ctx, size) => {
-    ctx.fillStyle = '#3a241c';
-    ctx.fillRect(0, 0, size, size);
-    const cols = 8;
-    const rows = 12;
-    const mortar = 5;
-    const bw = size / cols;
-    const bh = size / rows;
-    for (let y = 0; y < rows; y++) {
-      const offset = y % 2 === 0 ? 0 : bw * 0.5;
-      for (let x = -1; x <= cols; x++) {
-        const px = x * bw + offset;
-        const py = y * bh;
-        const shade = 0.72 + Math.random() * 0.28;
-        const r = Math.floor((92 + Math.random() * 40) * shade);
-        const g = Math.floor((48 + Math.random() * 22) * shade);
-        const b = Math.floor((32 + Math.random() * 16) * shade);
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        ctx.fillRect(px + mortar * 0.5, py + mortar * 0.5, bw - mortar, bh - mortar);
-        if (Math.random() > 0.55) {
-          ctx.fillStyle = `rgba(20,10,6,${0.08 + Math.random() * 0.12})`;
-          ctx.beginPath();
-          ctx.ellipse(
-            px + Math.random() * bw,
-            py + Math.random() * bh,
-            4 + Math.random() * 10,
-            2 + Math.random() * 4,
-            0,
-            0,
-            Math.PI * 2
-          );
-          ctx.fill();
-        }
-      }
-    }
-    const heat = ctx.createLinearGradient(0, size, 0, 0);
-    heat.addColorStop(0, 'rgba(90, 28, 8, 0.28)');
-    heat.addColorStop(0.45, 'rgba(40, 12, 6, 0.08)');
-    heat.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = heat;
-    ctx.fillRect(0, 0, size, size);
-  });
-
-  const roughness = canvasTexture(256, (ctx, size) => {
-    ctx.fillStyle = '#8a8a8a';
-    ctx.fillRect(0, 0, size, size);
-    for (let i = 0; i < 180; i++) {
-      ctx.fillStyle = `rgba(255,255,255,${0.04 + Math.random() * 0.08})`;
-      ctx.fillRect(Math.random() * size, Math.random() * size, 3 + Math.random() * 8, 2);
-    }
-  });
-  roughness.colorSpace = THREE.NoColorSpace;
-  return { map, roughness };
-}
-
 function makeBarkMaps(): { map: THREE.CanvasTexture; roughness: THREE.CanvasTexture } {
   const map = canvasTexture(256, (ctx, size) => {
     const base = ctx.createLinearGradient(0, 0, size, 0);
-    base.addColorStop(0, '#2a1810');
-    base.addColorStop(0.5, '#4a2c18');
-    base.addColorStop(1, '#23140c');
+    base.addColorStop(0, '#1c100a');
+    base.addColorStop(0.35, '#4a2a16');
+    base.addColorStop(0.7, '#2c1810');
+    base.addColorStop(1, '#1a0e08');
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, size, size);
-    for (let i = 0; i < 40; i++) {
-      ctx.strokeStyle = `rgba(18, 10, 6, ${0.25 + Math.random() * 0.45})`;
-      ctx.lineWidth = 1 + Math.random() * 3;
+    for (let i = 0; i < 48; i++) {
+      ctx.strokeStyle = `rgba(14, 8, 4, ${0.28 + Math.random() * 0.5})`;
+      ctx.lineWidth = 1 + Math.random() * 3.4;
       const x = Math.random() * size;
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.bezierCurveTo(x + 4, size * 0.35, x - 6, size * 0.7, x + (Math.random() - 0.5) * 8, size);
+      ctx.bezierCurveTo(x + 5, size * 0.32, x - 7, size * 0.68, x + (Math.random() - 0.5) * 10, size);
       ctx.stroke();
     }
-    for (let i = 0; i < 18; i++) {
-      ctx.fillStyle = `rgba(255, 120, 30, ${0.04 + Math.random() * 0.08})`;
-      ctx.fillRect(Math.random() * size, Math.random() * size, 2, 18 + Math.random() * 40);
+    for (let i = 0; i < 22; i++) {
+      ctx.fillStyle = `rgba(255, 110, 28, ${0.035 + Math.random() * 0.09})`;
+      ctx.fillRect(Math.random() * size, Math.random() * size, 2, 16 + Math.random() * 44);
+    }
+    for (let i = 0; i < 10; i++) {
+      ctx.fillStyle = `rgba(8, 4, 2, ${0.18 + Math.random() * 0.28})`;
+      ctx.beginPath();
+      ctx.ellipse(Math.random() * size, Math.random() * size, 6 + Math.random() * 14, 3 + Math.random() * 6, 0, 0, Math.PI * 2);
+      ctx.fill();
     }
   });
 
-  const roughness = canvasTexture(256, (ctx, size) => {
-    ctx.fillStyle = '#555555';
-    ctx.fillRect(0, 0, size, size);
-    for (let i = 0; i < 50; i++) {
-      ctx.strokeStyle = `rgba(255,255,255,${0.06 + Math.random() * 0.1})`;
-      ctx.lineWidth = 2;
-      const x = Math.random() * size;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x + (Math.random() - 0.5) * 6, size);
-      ctx.stroke();
-    }
-  });
-  roughness.colorSpace = THREE.NoColorSpace;
+  const roughness = canvasTexture(
+    256,
+    (ctx, size) => {
+      ctx.fillStyle = '#4e4e4e';
+      ctx.fillRect(0, 0, size, size);
+      for (let i = 0; i < 56; i++) {
+        ctx.strokeStyle = `rgba(255,255,255,${0.05 + Math.random() * 0.12})`;
+        ctx.lineWidth = 2;
+        const x = Math.random() * size;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x + (Math.random() - 0.5) * 7, size);
+        ctx.stroke();
+      }
+    },
+    THREE.NoColorSpace
+  );
   return { map, roughness };
 }
 
-function makeStoneMap(): THREE.CanvasTexture {
-  return canvasTexture(256, (ctx, size) => {
-    ctx.fillStyle = '#2b241e';
+function makeEarthMap(): THREE.CanvasTexture {
+  return canvasTexture(512, (ctx, size) => {
+    const g = ctx.createRadialGradient(size * 0.5, size * 0.5, size * 0.04, size * 0.5, size * 0.5, size * 0.5);
+    g.addColorStop(0, '#1a0c08');
+    g.addColorStop(0.18, '#2a1610');
+    g.addColorStop(0.42, '#3a2818');
+    g.addColorStop(1, '#16110e');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, size, size);
-    for (let i = 0; i < 90; i++) {
-      ctx.fillStyle = `rgba(${60 + Math.random() * 40},${50 + Math.random() * 30},${40 + Math.random() * 20},${0.08 + Math.random() * 0.12})`;
+    for (let i = 0; i < 220; i++) {
+      const r = 70 + Math.random() * 50;
+      const gg = 50 + Math.random() * 32;
+      const b = 32 + Math.random() * 22;
+      ctx.fillStyle = `rgba(${r},${gg},${b},${0.07 + Math.random() * 0.14})`;
       ctx.beginPath();
-      ctx.ellipse(Math.random() * size, Math.random() * size, 8 + Math.random() * 28, 4 + Math.random() * 10, Math.random(), 0, Math.PI * 2);
+      ctx.ellipse(
+        Math.random() * size,
+        Math.random() * size,
+        4 + Math.random() * 18,
+        2 + Math.random() * 8,
+        Math.random() * Math.PI,
+        0,
+        Math.PI * 2
+      );
       ctx.fill();
+    }
+    for (let i = 0; i < 80; i++) {
+      ctx.fillStyle = `rgba(${20 + Math.random() * 24},${14 + Math.random() * 16},${10 + Math.random() * 10},${0.15})`;
+      ctx.fillRect(Math.random() * size, Math.random() * size, 1 + Math.random() * 2, 1);
     }
   });
 }
@@ -294,29 +315,33 @@ function makeStoneMap(): THREE.CanvasTexture {
 export class EmberHearth {
   private readonly runtime: SceneRuntime;
   private readonly energy = new AudioEnergySmoother({
-    bass: 0.12,
-    mid: 0.1,
-    treble: 0.16,
-    energy: 0.09,
-    pulseDecay: 2.4,
+    bass: 0.16,
+    mid: 0.13,
+    treble: 0.2,
+    energy: 0.12,
+    pulseDecay: 2.05,
   });
 
-  private readonly brickMaps: { map: THREE.CanvasTexture; roughness: THREE.CanvasTexture };
   private readonly barkMaps: { map: THREE.CanvasTexture; roughness: THREE.CanvasTexture };
-  private readonly stoneMap: THREE.CanvasTexture;
+  private readonly earthMap: THREE.CanvasTexture;
 
   private readonly fireMaterial: THREE.ShaderMaterial;
   private readonly fireMesh: THREE.Mesh;
-  private readonly fireBox = new THREE.Box3(new THREE.Vector3(-0.52, 0.08, -0.58), new THREE.Vector3(0.52, 1.28, 0.08));
+  private readonly fireBox = new THREE.Box3(
+    new THREE.Vector3(-0.7, 0.02, -0.7),
+    new THREE.Vector3(0.7, 1.88, 0.7)
+  );
 
   private readonly fireLight: THREE.PointLight;
-  private readonly hearthLight: THREE.PointLight;
+  private readonly groundLight: THREE.PointLight;
   private readonly logMats: THREE.MeshStandardMaterial[] = [];
+  private readonly groundGlow: THREE.MeshBasicMaterial;
   private readonly coalMesh: THREE.InstancedMesh;
   private readonly coalDummy = new THREE.Object3D();
   private readonly coalSeeds: Array<{ pos: THREE.Vector3; radius: number; phase: number }> = [];
 
   private readonly sparkGeom: THREE.BufferGeometry;
+  private readonly sparkMat: THREE.ShaderMaterial;
   private readonly sparkPositions: Float32Array;
   private readonly sparkSizes: Float32Array;
   private readonly sparkColors: Float32Array;
@@ -330,33 +355,31 @@ export class EmberHearth {
   constructor(container: HTMLElement, options: SceneVisualizerOptions = {}) {
     this.runtime = new SceneRuntime(container, {
       onContextLost: options.onContextLost,
-      fov: 38,
+      fov: 40,
       near: 0.08,
       far: 40,
-      cameraPosition: [1.62, 1.08, 2.92],
-      target: [0, 0.74, -0.18],
+      cameraPosition: [2.15, 1.12, 2.4],
+      target: [0, 0.5, 0],
       enablePan: false,
-      minDistance: 2.1,
-      maxDistance: 5.4,
-      minPolarAngle: Math.PI * 0.36,
-      maxPolarAngle: Math.PI * 0.58,
+      minDistance: 1.55,
+      maxDistance: 6.4,
+      minPolarAngle: Math.PI * 0.18,
+      maxPolarAngle: Math.PI * 0.78,
       dampingFactor: 0.07,
-      background: 0x070504,
-      fogDensity: 0.065,
-      toneMappingExposure: 0.95,
+      background: 0x05070e,
+      fogDensity: 0.042,
+      toneMappingExposure: 0.98,
       useEnvironment: true,
-      environmentIntensity: 0.16,
-      environmentBlur: 0.08,
-      autoRotateSpeedScale: 0.55,
+      environmentIntensity: 0.1,
+      environmentBlur: 0.1,
+      autoRotateSpeedScale: 0.72,
       onResize: () => this.frameHearth(),
     });
 
-    this.brickMaps = makeBrickMaps();
     this.barkMaps = makeBarkMaps();
-    this.stoneMap = makeStoneMap();
+    this.earthMap = makeEarthMap();
 
-    this.buildRoom();
-    this.buildFireplace();
+    this.buildCamp();
     this.buildLogs();
 
     this.fireMaterial = new THREE.ShaderMaterial({
@@ -375,7 +398,7 @@ export class EmberHearth {
         uHeight: { value: 0.72 },
         uHue: { value: 0.04 },
         uSat: { value: 0.35 },
-        uSteps: { value: 44 },
+        uSteps: { value: 42 },
       },
       transparent: true,
       depthWrite: false,
@@ -391,17 +414,31 @@ export class EmberHearth {
     this.fireMesh.renderOrder = 3;
     this.runtime.scene.add(this.fireMesh);
 
-    this.fireLight = new THREE.PointLight(0xff6a28, 8.5, 7.5, 1.55);
-    this.fireLight.position.set(0, 0.55, -0.12);
+    this.fireLight = new THREE.PointLight(0xff6a28, 9.2, 8.4, 1.45);
+    this.fireLight.position.set(0, 0.52, 0);
     this.runtime.scene.add(this.fireLight);
 
-    this.hearthLight = new THREE.PointLight(0xff8140, 2.2, 4.2, 1.8);
-    this.hearthLight.position.set(0, 0.18, 0.42);
-    this.runtime.scene.add(this.hearthLight);
+    this.groundLight = new THREE.PointLight(0xff7a38, 2.6, 4.8, 1.7);
+    this.groundLight.position.set(0, 0.1, 0);
+    this.runtime.scene.add(this.groundLight);
+
+    this.groundGlow = new THREE.MeshBasicMaterial({
+      color: 0x7a2208,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(1.55, 40), this.groundGlow);
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = 0.012;
+    glow.renderOrder = 1;
+    this.runtime.scene.add(glow);
 
     this.coalMesh = this.buildCoals();
     const spark = this.buildSparks();
     this.sparkGeom = spark.geometry;
+    this.sparkMat = spark.material;
     this.sparkPositions = spark.positions;
     this.sparkSizes = spark.sizes;
     this.sparkColors = spark.colors;
@@ -409,153 +446,110 @@ export class EmberHearth {
     this.runtime.resize();
   }
 
-  private brickMaterial(repeatX = 2, repeatY = 2, darker = false): THREE.MeshStandardMaterial {
-    const map = this.brickMaps.map.clone();
-    map.repeat.set(repeatX, repeatY);
-    map.needsUpdate = true;
-    const roughnessMap = this.brickMaps.roughness.clone();
-    roughnessMap.repeat.set(repeatX, repeatY);
-    roughnessMap.needsUpdate = true;
-    return new THREE.MeshStandardMaterial({
-      color: darker ? 0x5a3a2c : 0x8a5a42,
-      map,
-      roughnessMap,
-      roughness: darker ? 0.82 : 0.74,
-      metalness: 0.04,
-      envMapIntensity: 0.35,
-    });
-  }
-
-  private buildRoom(): void {
+  private buildCamp(): void {
     const scene = this.runtime.scene;
 
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(4.2, 40),
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(5.4, 48),
       new THREE.MeshStandardMaterial({
-        color: 0x1a120e,
-        map: this.stoneMap,
+        color: 0x2a1c14,
+        map: this.earthMap,
+        roughness: 0.94,
+        metalness: 0.02,
+      })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.02;
+    scene.add(ground);
+
+    const ash = new THREE.Mesh(
+      new THREE.CircleGeometry(0.62, 28),
+      new THREE.MeshStandardMaterial({
+        color: 0x1a100c,
         roughness: 0.9,
         metalness: 0.04,
+        emissive: new THREE.Color(0x3a1208),
+        emissiveIntensity: 0.22,
       })
     );
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -0.02;
-    scene.add(floor);
+    ash.rotation.x = -Math.PI / 2;
+    ash.position.y = 0.002;
+    scene.add(ash);
 
-    const glow = new THREE.Mesh(
-      new THREE.CircleGeometry(1.15, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0x5a220c,
-        transparent: true,
-        opacity: 0.42,
-      })
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(9.2, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.56),
+      new THREE.MeshBasicMaterial({ color: 0x060810, side: THREE.BackSide, fog: false })
     );
-    glow.rotation.x = -Math.PI / 2;
-    glow.position.y = 0.005;
-    scene.add(glow);
+    sky.position.y = 0.4;
+    scene.add(sky);
+    this.buildStars();
 
-    const backdrop = new THREE.Mesh(
-      new THREE.SphereGeometry(8, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.58),
-      new THREE.MeshBasicMaterial({ color: 0x060403, side: THREE.BackSide })
-    );
-    backdrop.position.y = 1.2;
-    scene.add(backdrop);
-
-    scene.add(new THREE.AmbientLight(0x2a1812, 0.22));
-    const hemi = new THREE.HemisphereLight(0xffc8a0, 0x080604, 0.28);
+    scene.add(new THREE.AmbientLight(0x141820, 0.16));
+    const hemi = new THREE.HemisphereLight(0xffc29a, 0x05060c, 0.22);
     scene.add(hemi);
   }
 
-  private buildFireplace(): void {
-    const scene = this.runtime.scene;
-    const brick = this.brickMaterial(2.2, 2.4);
-    const brickDark = this.brickMaterial(1.4, 1.6, true);
-    const stone = new THREE.MeshStandardMaterial({
-      color: 0x4a4036,
-      map: this.stoneMap,
-      roughness: 0.88,
-      metalness: 0.06,
-    });
-    const soot = new THREE.MeshStandardMaterial({
-      color: 0x16110e,
-      roughness: 0.92,
-      metalness: 0.02,
-    });
-    const iron = new THREE.MeshStandardMaterial({
-      color: 0x1c1612,
-      roughness: 0.42,
-      metalness: 0.72,
-      envMapIntensity: 0.7,
-    });
-
-    const hearth = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.12, 1.18), stone);
-    hearth.position.set(0, 0.0, 0.08);
-    scene.add(hearth);
-
-    const back = new THREE.Mesh(new THREE.BoxGeometry(1.22, 1.18, 0.14), soot);
-    back.position.set(0, 0.68, -0.62);
-    scene.add(back);
-
-    const left = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.48, 0.92), brick);
-    left.position.set(-0.86, 0.74, -0.22);
-    scene.add(left);
-    const right = left.clone();
-    right.position.x = 0.86;
-    scene.add(right);
-
-    const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.22, 0.78), brick);
-    lintel.position.set(0, 1.48, -0.22);
-    scene.add(lintel);
-
-    const breast = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.85, 0.62), brickDark);
-    breast.position.set(0, 2.0, -0.28);
-    scene.add(breast);
-
-    const innerFloor = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.06, 0.62), soot);
-    innerFloor.position.set(0, 0.09, -0.28);
-    scene.add(innerFloor);
-
-    this.addAndiron(-0.32, iron);
-    this.addAndiron(0.32, iron);
-  }
-
-  private addAndiron(x: number, iron: THREE.MeshStandardMaterial): void {
-    const group = new THREE.Group();
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.32, 8), iron);
-    post.position.y = 0.22;
-    group.add(post);
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.42), iron);
-    bar.position.set(0, 0.12, -0.08);
-    group.add(bar);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.12), iron);
-    foot.position.set(0, 0.075, 0.12);
-    group.add(foot);
-    group.position.set(x, 0.06, -0.08);
-    this.runtime.scene.add(group);
+  private buildStars(): void {
+    const count = 96;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI * 0.42;
+      const radius = 7.6;
+      positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = radius * Math.cos(phi) * 0.62 + 1.35;
+      positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+      const warm = Math.random() > 0.82;
+      colors[i * 3] = warm ? 1 : 0.78 + Math.random() * 0.2;
+      colors[i * 3 + 1] = warm ? 0.86 : 0.84 + Math.random() * 0.12;
+      colors[i * 3 + 2] = warm ? 0.62 : 1;
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const stars = new THREE.Points(
+      geom,
+      new THREE.PointsMaterial({
+        size: 0.035,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        sizeAttenuation: true,
+      })
+    );
+    stars.frustumCulled = false;
+    this.runtime.scene.add(stars);
   }
 
   private buildLogs(): void {
     const specs = [
-      { pos: new THREE.Vector3(-0.12, 0.2, -0.22), rot: new THREE.Euler(0.12, 0.35, 0.55), len: 0.78, r: 0.075 },
-      { pos: new THREE.Vector3(0.16, 0.19, -0.3), rot: new THREE.Euler(-0.08, -0.4, -0.62), len: 0.72, r: 0.068 },
-      { pos: new THREE.Vector3(0.0, 0.3, -0.26), rot: new THREE.Euler(0.05, 0.1, 0.18), len: 0.62, r: 0.055 },
+      { pos: new THREE.Vector3(-0.18, 0.078, 0.12), rot: new THREE.Euler(0.1, 0.58, 1.22), len: 0.8, r: 0.074, char: 0.32 },
+      { pos: new THREE.Vector3(0.2, 0.074, 0.08), rot: new THREE.Euler(0.06, -0.82, -1.16), len: 0.76, r: 0.07, char: 0.4 },
+      { pos: new THREE.Vector3(0.02, 0.072, -0.2), rot: new THREE.Euler(-0.08, 0.12, 0.16), len: 0.82, r: 0.072, char: 0.28 },
+      { pos: new THREE.Vector3(-0.1, 0.17, -0.04), rot: new THREE.Euler(0.24, 0.92, 0.52), len: 0.62, r: 0.054, char: 0.58 },
+      { pos: new THREE.Vector3(0.12, 0.19, 0.09), rot: new THREE.Euler(-0.2, -0.42, -0.5), len: 0.58, r: 0.05, char: 0.64 },
+      { pos: new THREE.Vector3(0.0, 0.27, 0.015), rot: new THREE.Euler(0.14, 0.22, 0.2), len: 0.48, r: 0.042, char: 0.74 },
+      { pos: new THREE.Vector3(0.24, 0.13, -0.14), rot: new THREE.Euler(0.38, 1.12, 0.72), len: 0.44, r: 0.038, char: 0.5 },
     ];
 
     for (const spec of specs) {
       const map = this.barkMaps.map.clone();
-      map.repeat.set(2, 1);
+      map.repeat.set(2.2, 1);
       map.needsUpdate = true;
+      const shade = 0.55 + spec.char * 0.2;
       const mat = new THREE.MeshStandardMaterial({
-        color: 0x6a3c22,
+        color: new THREE.Color().setRGB(0.38 * shade, 0.2 * shade, 0.1 * shade),
         map,
         roughnessMap: this.barkMaps.roughness,
-        roughness: 0.78,
+        roughness: 0.8,
         metalness: 0.04,
         emissive: new THREE.Color(0x4a1408),
-        emissiveIntensity: 0.15,
+        emissiveIntensity: 0.12 + spec.char * 0.22,
       });
       this.logMats.push(mat);
-      const log = new THREE.Mesh(new THREE.CapsuleGeometry(spec.r, spec.len, 6, 12), mat);
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(spec.r * 0.9, spec.r, spec.len, 12, 3), mat);
       log.position.copy(spec.pos);
       log.rotation.copy(spec.rot);
       this.runtime.scene.add(log);
@@ -565,21 +559,21 @@ export class EmberHearth {
   private buildCoals(): THREE.InstancedMesh {
     const geom = new THREE.SphereGeometry(1, 8, 6);
     const mat = new THREE.MeshStandardMaterial({
-      color: 0x1a0c08,
+      color: 0x160a06,
       emissive: new THREE.Color(0xff4a12),
-      emissiveIntensity: 0.8,
-      roughness: 0.7,
+      emissiveIntensity: 0.85,
+      roughness: 0.68,
       metalness: 0.08,
     });
     const mesh = new THREE.InstancedMesh(geom, mat, MAX_COALS);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let i = 0; i < MAX_COALS; i++) {
-      const a = (i / MAX_COALS) * Math.PI * 2 + i * 0.37;
-      const r = 0.08 + (i % 5) * 0.045;
+      const a = (i / MAX_COALS) * Math.PI * 2 + i * 0.41;
+      const r = 0.05 + (i % 6) * 0.038;
       this.coalSeeds.push({
-        pos: new THREE.Vector3(Math.cos(a) * r * 0.9, 0.13 + (i % 3) * 0.02, -0.22 + Math.sin(a) * r * 0.55),
-        radius: 0.028 + (i % 4) * 0.01,
-        phase: i * 1.13,
+        pos: new THREE.Vector3(Math.cos(a) * r, 0.055 + (i % 4) * 0.018, Math.sin(a) * r),
+        radius: 0.026 + (i % 5) * 0.009,
+        phase: i * 1.17,
       });
     }
     this.runtime.scene.add(mesh);
@@ -588,6 +582,7 @@ export class EmberHearth {
 
   private buildSparks(): {
     geometry: THREE.BufferGeometry;
+    material: THREE.ShaderMaterial;
     positions: Float32Array;
     sizes: Float32Array;
     colors: Float32Array;
@@ -597,17 +592,18 @@ export class EmberHearth {
     const sizes = new Float32Array(MAX_SPARKS);
     const colors = new Float32Array(MAX_SPARKS * 3);
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-    const material = new THREE.PointsMaterial({
-      size: 0.035,
-      vertexColors: true,
+    const material = new THREE.ShaderMaterial({
+      vertexShader: SPARK_VERT,
+      fragmentShader: SPARK_FRAG,
+      uniforms: {
+        uPixelRatio: { value: this.runtime.currentPixelRatio },
+      },
       transparent: true,
-      opacity: 0.9,
-      blending: THREE.AdditiveBlending,
       depthWrite: false,
-      sizeAttenuation: true,
+      blending: THREE.AdditiveBlending,
     });
     const points = new THREE.Points(geometry, material);
     points.frustumCulled = false;
@@ -623,7 +619,7 @@ export class EmberHearth {
         size: 0.02,
       });
     }
-    return { geometry, positions, sizes, colors };
+    return { geometry, material, positions, sizes, colors };
   }
 
   private palette(settings: AppSettingsV1): { hue: number; sat: number; light: THREE.Color } {
@@ -649,10 +645,10 @@ export class EmberHearth {
   }
 
   private applyQualityTier(): void {
-    const steps = [24, 34, 44][this.qualityTier];
+    const steps = [22, 32, 42][this.qualityTier];
     this.fireMaterial.uniforms.uSteps.value = steps;
-    this.sparkCount = [16, 30, MAX_SPARKS][this.qualityTier];
-    this.coalCount = [8, 12, MAX_COALS][this.qualityTier];
+    this.sparkCount = [22, 48, MAX_SPARKS][this.qualityTier];
+    this.coalCount = [10, 16, MAX_COALS][this.qualityTier];
   }
 
   private updateCoals(): void {
@@ -667,7 +663,7 @@ export class EmberHearth {
         this.coalMesh.setMatrixAt(i, this.coalDummy.matrix);
         continue;
       }
-      const breathe = 1 + Math.sin(this.simTime * 2.1 + seed.phase) * 0.08 + mid * 0.18 + pulse * 0.12;
+      const breathe = 1 + Math.sin(this.simTime * 2.2 + seed.phase) * 0.09 + mid * 0.2 + pulse * 0.14;
       this.coalDummy.position.copy(seed.pos);
       this.coalDummy.scale.setScalar(seed.radius * breathe);
       this.coalDummy.updateMatrix();
@@ -675,22 +671,30 @@ export class EmberHearth {
     }
     this.coalMesh.instanceMatrix.needsUpdate = true;
     const mat = this.coalMesh.material as THREE.MeshStandardMaterial;
-    mat.emissiveIntensity = 0.55 + mid * 1.1 + pulse * 0.6;
+    mat.emissiveIntensity = 0.58 + mid * 1.2 + pulse * 0.7;
   }
 
   private spawnSpark(): void {
     const spark = this.sparks.find((item) => item.life <= 0);
     if (!spark) return;
-    spark.pos.set((Math.random() - 0.5) * 0.42, 0.22 + Math.random() * 0.18, -0.28 + (Math.random() - 0.5) * 0.2);
-    spark.vel.set((Math.random() - 0.5) * 0.18, 0.35 + Math.random() * 0.45, (Math.random() - 0.5) * 0.12);
-    spark.maxLife = 0.7 + Math.random() * 1.1;
+    const ang = Math.random() * Math.PI * 2;
+    const rad = Math.random() * 0.24;
+    spark.pos.set(Math.cos(ang) * rad, 0.16 + Math.random() * 0.28, Math.sin(ang) * rad);
+    const burst = 0.55 + this.energy.bass * 0.85 + this.energy.heatPulse * 1.15;
+    const spray = 0.55 + this.energy.treble * 0.7;
+    spark.vel.set(
+      Math.cos(ang) * (0.08 + Math.random() * 0.42) * spray,
+      burst * (0.42 + Math.random() * 0.95),
+      Math.sin(ang) * (0.08 + Math.random() * 0.42) * spray
+    );
+    spark.maxLife = 0.65 + Math.random() * 1.35;
     spark.life = spark.maxLife;
-    spark.size = 0.012 + Math.random() * 0.02;
+    spark.size = 0.012 + Math.random() * 0.028;
   }
 
   private updateSparks(dt: number, reduced: boolean): void {
     if (!reduced) {
-      this.spawnAcc += dt * (0.35 + this.energy.treble * 4.5 + this.energy.heatPulse * 2.2);
+      this.spawnAcc += dt * (0.55 + this.energy.treble * 8.8 + this.energy.heatPulse * 4.2 + this.energy.energy * 2.2);
       while (this.spawnAcc > 1) {
         this.spawnAcc -= 1;
         const live = this.sparks.filter((s) => s.life > 0).length;
@@ -702,27 +706,26 @@ export class EmberHearth {
       const spark = this.sparks[i];
       if (spark.life > 0 && !reduced) {
         spark.life -= dt;
-        spark.vel.y += 0.25 * dt;
-        spark.vel.x += Math.sin(this.simTime * 6.0 + i) * this.energy.treble * 0.15 * dt;
-        spark.vel.multiplyScalar(Math.exp(-0.55 * dt));
+        spark.vel.y += 0.18 * dt;
+        spark.vel.x += Math.sin(this.simTime * 6.2 + i) * this.energy.treble * 0.22 * dt;
+        spark.vel.z += Math.cos(this.simTime * 5.4 + i) * this.energy.treble * 0.18 * dt;
+        spark.vel.multiplyScalar(Math.exp(-0.48 * dt));
         spark.pos.addScaledVector(spark.vel, dt);
       }
       const alive = spark.life > 0;
-      const fade = alive ? Math.min(1, spark.life / 0.2) * Math.min(1, (spark.maxLife - spark.life) / 0.15) : 0;
+      const fade = alive ? Math.min(1, spark.life / 0.18) * Math.min(1, (spark.maxLife - spark.life) / 0.12) : 0;
       this.sparkPositions[i * 3] = alive ? spark.pos.x : 0;
       this.sparkPositions[i * 3 + 1] = alive ? spark.pos.y : -10;
       this.sparkPositions[i * 3 + 2] = alive ? spark.pos.z : 0;
-      this.sparkSizes[i] = alive ? spark.size * (0.7 + fade) : 0;
+      this.sparkSizes[i] = alive ? spark.size * (0.65 + fade * 1.15) : 0;
       this.sparkColors[i * 3] = 1.0;
-      this.sparkColors[i * 3 + 1] = 0.55 + fade * 0.3;
-      this.sparkColors[i * 3 + 2] = 0.18;
+      this.sparkColors[i * 3 + 1] = 0.42 + fade * 0.4;
+      this.sparkColors[i * 3 + 2] = 0.1 + fade * 0.12;
     }
-    const pos = this.sparkGeom.getAttribute('position');
-    const size = this.sparkGeom.getAttribute('size');
-    const color = this.sparkGeom.getAttribute('color');
-    pos.needsUpdate = true;
-    if (size) size.needsUpdate = true;
-    if (color) color.needsUpdate = true;
+    this.sparkGeom.getAttribute('position').needsUpdate = true;
+    this.sparkGeom.getAttribute('aSize').needsUpdate = true;
+    this.sparkGeom.getAttribute('color').needsUpdate = true;
+    this.sparkMat.uniforms.uPixelRatio.value = this.runtime.currentPixelRatio;
   }
 
   private updateFire(settings: AppSettingsV1): void {
@@ -734,41 +737,47 @@ export class EmberHearth {
     u.uTreble.value = this.energy.treble;
     u.uEnergy.value = this.energy.energy;
     u.uPulse.value = this.energy.heatPulse;
-    u.uHeight.value = 0.58 + this.energy.bass * 0.38 + this.energy.heatPulse * 0.22;
+    u.uHeight.value = 0.5 + this.energy.bass * 0.44 + this.energy.heatPulse * 0.28;
 
     const pal = this.palette(settings);
     u.uHue.value = pal.hue;
     u.uSat.value = pal.sat;
 
-    const idle = 0.08 * Math.sin(this.simTime * 1.4);
+    const flicker = 0.1 * Math.sin(this.simTime * 7.2) + 0.06 * Math.sin(this.simTime * 13.1);
     this.fireLight.color.copy(pal.light);
-    this.fireLight.intensity = 5.4 + this.energy.bass * 7.5 + this.energy.heatPulse * 3.8 + idle;
-    this.hearthLight.intensity = 1.4 + this.energy.energy * 2.2;
-    this.hearthLight.color.copy(pal.light);
+    this.fireLight.intensity = 5.8 + this.energy.bass * 8.4 + this.energy.heatPulse * 4.2 + flicker;
+    this.fireLight.position.set(
+      Math.sin(this.simTime * 1.6) * 0.05,
+      0.46 + this.energy.bass * 0.18 + this.energy.heatPulse * 0.12,
+      Math.cos(this.simTime * 1.25) * 0.05
+    );
+    this.groundLight.intensity = 1.5 + this.energy.energy * 2.6 + this.energy.heatPulse * 0.8;
+    this.groundLight.color.copy(pal.light);
+    this.groundGlow.opacity = 0.28 + this.energy.bass * 0.38 + this.energy.heatPulse * 0.18;
 
-    const logGlow = 0.12 + this.energy.mid * 0.55 + this.energy.heatPulse * 0.2;
+    const logGlow = 0.14 + this.energy.mid * 0.62 + this.energy.heatPulse * 0.22;
     for (const mat of this.logMats) {
       mat.emissiveIntensity = logGlow;
-      mat.emissive.copy(pal.light).multiplyScalar(0.35);
+      mat.emissive.copy(pal.light).multiplyScalar(0.38);
     }
   }
 
   private frameHearth(): void {
-    this.runtime.controls.target.set(0, 0.74, -0.18);
+    this.runtime.controls.target.set(0, 0.5, 0);
     const vFov = THREE.MathUtils.degToRad(this.runtime.camera.fov);
     const aspect = Math.max(this.runtime.camera.aspect, 0.2);
-    const fitH = 1.85;
-    const fitW = 2.2;
+    const fitH = 1.72;
+    const fitW = 1.55;
     const distH = fitH / 2 / Math.tan(vFov / 2);
     const distW = fitW / 2 / (Math.tan(vFov / 2) * aspect);
-    const dist = Math.max(distH, distW) * 1.05;
+    const dist = Math.max(distH, distW) * 1.12;
 
     const offset = this.runtime.camera.position.clone().sub(this.runtime.controls.target);
-    if (offset.lengthSq() < 1e-6) offset.set(0.45, 0.18, 1);
+    if (offset.lengthSq() < 1e-6) offset.set(0.55, 0.28, 1);
     offset.normalize().multiplyScalar(dist);
     this.runtime.camera.position.copy(this.runtime.controls.target).add(offset);
-    this.runtime.controls.minDistance = dist * 0.55;
-    this.runtime.controls.maxDistance = dist * 1.85;
+    this.runtime.controls.minDistance = dist * 0.48;
+    this.runtime.controls.maxDistance = dist * 2.15;
   }
 
   public degradeQuality(): boolean {
@@ -785,7 +794,7 @@ export class EmberHearth {
     if (!this.runtime.alive) return;
 
     const { now, rawDt } = this.runtime.beginFrame();
-    const reduced = this.runtime.applyControls(settings, 0.55);
+    const reduced = this.runtime.applyControls(settings, 0.72);
     const dt = reduced ? 0 : rawDt * atmosphereSpeed(settings);
     if (!reduced) {
       this.simTime += dt;
@@ -800,11 +809,9 @@ export class EmberHearth {
 
   public destroy(): void {
     if (this.runtime.isDestroyed) return;
-    this.brickMaps.map.dispose();
-    this.brickMaps.roughness.dispose();
     this.barkMaps.map.dispose();
     this.barkMaps.roughness.dispose();
-    this.stoneMap.dispose();
+    this.earthMap.dispose();
     this.runtime.disposeSceneGraph();
     this.runtime.destroy();
   }
