@@ -83,6 +83,27 @@ describe('Settings Storage Module', () => {
     expect(settings.colorMode).toBe('mood');
   });
 
+  it('persists tide visualizer mode', () => {
+    saveSettings({ visualizerMode: 'tide', sceneSpeed: 0.7 });
+    const settings = loadSettings();
+    expect(settings.visualizerMode).toBe('tide');
+    expect(settings.sceneSpeed).toBe(0.7);
+  });
+
+  it('persists grove visualizer mode', () => {
+    saveSettings({ visualizerMode: 'grove', sceneSpeed: 0.85 });
+    const settings = loadSettings();
+    expect(settings.visualizerMode).toBe('grove');
+    expect(settings.sceneSpeed).toBe(0.85);
+  });
+
+  it('persists pond visualizer mode', () => {
+    saveSettings({ visualizerMode: 'pond', sceneSpeed: 0.75 });
+    const settings = loadSettings();
+    expect(settings.visualizerMode).toBe('pond');
+    expect(settings.sceneSpeed).toBe(0.75);
+  });
+
   it('reads legacy lavaSpeed as sceneSpeed', () => {
     localStorage.setItem(
       SETTINGS_STORAGE_KEY,

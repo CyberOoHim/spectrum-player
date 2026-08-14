@@ -92,9 +92,9 @@ Looking out a rain-streaked cabin window at night. Full 360-degree cabin environ
 
 ### 3. Moonlit Tide — `tide`
 
-**Status:** parked.
+**Status:** shipped (`src/viz/scenes/tide.ts`).
 
-A quiet shoreline at night. Wet sand, foam lace, moonlight path, small waves rolling toward the camera.
+A quiet shoreline at night. Wet sand, foam lace, moonlight path, rolling Gerstner waves toward the shore.
 
 | Layer | What you see | Audio |
 |---|---|---|
@@ -105,13 +105,13 @@ A quiet shoreline at night. Wet sand, foam lace, moonlight path, small waves rol
 
 **Why this one:** classic regulation / breathing visual. Lively through water, never frantic. Complements rain (open water vs glass).
 
-**Technique:** displaced plane or gerstner-ish shader water; foam via noise + shore distance; moon as a soft disc + bloom; wet sand as a dark PBR plane with high roughness contrast.
+**Technique:** displaced plane with Gerstner wave shader; foam via noise + shore distance; moon as a soft disc with halo; wet sand as a dark PBR plane with high roughness contrast. Full 360° orbit.
 
 ---
 
 ### 4. Grove Lightwells — `grove`
 
-**Status:** parked.
+**Status:** shipped (`src/viz/scenes/grove.ts`).
 
 A small forest clearing. God rays through canopy, floating pollen, a few leaves that lift and settle.
 
@@ -124,13 +124,13 @@ A small forest clearing. God rays through canopy, floating pollen, a few leaves 
 
 **Why this one:** the “healing nature” scene. Warm daylight instead of night fire/water, so the five modes are not all dark rooms.
 
-**Technique:** layered billboard / card canopy (no full tree GI); volumetric shafts in a fullscreen or box shader; instanced motes; very slow camera drift, never a fly-through.
+**Technique:** procedural tree trunks with bark maps; volumetric sun shafts shader; instanced pollen motes and falling leaves; mossy forest floor. Full 360° orbit.
 
 ---
 
 ### 5. Lantern Pond — `pond`
 
-**Status:** parked.
+**Status:** shipped (`src/viz/scenes/pond.ts`).
 
 A night garden pond. Lily pads, koi, paper lanterns, fireflies, still water with lantern reflections.
 
@@ -143,7 +143,7 @@ A night garden pond. Lily pads, koi, paper lanterns, fireflies, still water with
 
 **Why this one:** most *alive* without being energetic. Completes the set: fire, weather, ocean, forest, garden.
 
-**Technique:** planar water with reflection/refraction; 4–8 simple koi (instanced elongated meshes + sine swim); instanced fireflies with additive points; lanterns as emissive paper cylinders.
+**Technique:** planar water with ripple distortion and reflections; animated koi fish with swimming undulation; floating paper lanterns with point lights; instanced blinking fireflies. Full 360° orbit.
 
 ---
 
@@ -321,13 +321,13 @@ interface SceneVisualizer {
 | `src/viz/scene.ts` | `SceneVisualizer` interface, `atmosphereSpeed`, reduced-motion helper | shipped |
 | `src/viz/scene-runtime.ts` | Renderer, OrbitControls, resize, context-loss, ACES, DPR adapt, framing | shipped |
 | `src/viz/audio-energy.ts` | Shared bass / mid / treble / energy / onset smoothing | shipped |
-| `src/viz/scenes/registry.ts` | `lava` and `hearth` factories today; more later | shipped |
+| `src/viz/scenes/registry.ts` | `lava`, `hearth`, `rain`, `tide`, `grove`, `pond` factories | shipped |
 | `src/viz/lava-lamp.ts` | Existing lamp, on the shared runtime (kept at this path) | shipped |
-| `src/viz/scenes/hearth.ts` | Ember Hearth | shipped (proof) |
+| `src/viz/scenes/hearth.ts` | Ember Hearth | shipped |
 | `src/viz/scenes/rain.ts` | Rainlight Window | shipped |
-| `src/viz/scenes/tide.ts` | Moonlit Tide | parked |
-| `src/viz/scenes/grove.ts` | Grove Lightwells | parked |
-| `src/viz/scenes/pond.ts` | Lantern Pond | parked |
+| `src/viz/scenes/tide.ts` | Moonlit Tide | shipped |
+| `src/viz/scenes/grove.ts` | Grove Lightwells | shipped |
+| `src/viz/scenes/pond.ts` | Lantern Pond | shipped |
 
 `app.ts` holds `vizScene: SceneVisualizer | null`. Atmosphere degrade calls `vizScene.degradeQuality()` first.
 
