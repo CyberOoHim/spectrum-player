@@ -238,6 +238,13 @@ optgroup {
   justify-content: center;
 }
 
+#canvas-host > canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  z-index: 1;
+}
+
 .ambient-glow {
   position: absolute;
   top: 50%;

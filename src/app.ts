@@ -100,6 +100,10 @@ export function boot(): void {
   };
 
   let warmupUntil = 0;
+  let rafId: number | null = null;
+  let lastFrameTime = 0;
+  let slowFrameCount = 0;
+  let controls: UIControls | null = null;
 
   const initVisualizer = () => {
     destroyVisualizers();
@@ -140,11 +144,6 @@ export function boot(): void {
   };
 
   initVisualizer();
-
-  let rafId: number | null = null;
-  let lastFrameTime = 0;
-  let slowFrameCount = 0;
-  let controls!: UIControls;
 
   const stopLoop = () => {
     if (rafId !== null) {
@@ -312,7 +311,7 @@ export function boot(): void {
         handleTrackSelected(blobUrl, trackInfo, { restoreTime: session.currentTime });
         await restoreSeek(session.currentTime);
         setStatusMessage(`Restored session: ${track.title}`);
-        await controls.refreshLibrary();
+        await controls?.refreshLibrary();
         return;
       }
     }
@@ -322,7 +321,7 @@ export function boot(): void {
       await restoreSeek(session.currentTime);
     }
     setStatusMessage('Ready to play.');
-    await controls.refreshLibrary();
+    await controls?.refreshLibrary();
   };
 
   restoreLastSession().catch((err) => {
