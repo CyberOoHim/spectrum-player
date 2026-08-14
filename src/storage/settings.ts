@@ -5,7 +5,7 @@ export interface AppSettingsV1 {
   volume: number;
   muted: boolean;
   loop: boolean;
-  visualizerMode: 'bars' | 'radial' | 'particles' | '2d' | 'orb' | 'lava' | 'hearth';
+  visualizerMode: 'bars' | 'radial' | 'particles' | '2d' | 'orb' | 'lava' | 'hearth' | 'rain';
   colorMode: 'spectrum' | 'mono' | 'mood';
   sensitivity: number;
   fftSize: 512 | 1024 | 2048;
@@ -59,7 +59,7 @@ export function normalizeSettings(input: unknown): AppSettingsV1 {
   const volume = typeof parsed.volume === 'number' ? clamp(parsed.volume, 0, 1) : DEFAULT_SETTINGS.volume;
   const muted = typeof parsed.muted === 'boolean' ? parsed.muted : DEFAULT_SETTINGS.muted;
   const loop = typeof parsed.loop === 'boolean' ? parsed.loop : DEFAULT_SETTINGS.loop;
-  const visualizerMode = ['bars', 'radial', 'particles', '2d', 'orb', 'lava', 'hearth'].includes(
+  const visualizerMode = ['bars', 'radial', 'particles', '2d', 'orb', 'lava', 'hearth', 'rain'].includes(
     parsed.visualizerMode as string
   )
     ? (parsed.visualizerMode as AppSettingsV1['visualizerMode'])

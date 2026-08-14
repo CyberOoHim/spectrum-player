@@ -75,6 +75,14 @@ describe('Settings Storage Module', () => {
     expect(settings.sceneSpeed).toBe(0.6);
   });
 
+  it('persists rain visualizer mode', () => {
+    saveSettings({ visualizerMode: 'rain', sceneSpeed: 0.9, colorMode: 'mood' });
+    const settings = loadSettings();
+    expect(settings.visualizerMode).toBe('rain');
+    expect(settings.sceneSpeed).toBe(0.9);
+    expect(settings.colorMode).toBe('mood');
+  });
+
   it('reads legacy lavaSpeed as sceneSpeed', () => {
     localStorage.setItem(
       SETTINGS_STORAGE_KEY,

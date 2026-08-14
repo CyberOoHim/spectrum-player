@@ -73,9 +73,9 @@ The expanded proof spec is in [Ember Hearth, explained](#ember-hearth-explained)
 
 ### 2. Rainlight Window — `rain`
 
-**Status:** parked.
+**Status:** shipped (`src/viz/scenes/rain.ts`).
 
-Looking out a rain-streaked cabin window at night. Condensation, droplets with refraction, a wet sill, distant forest or porch lights in fog.
+Looking out a rain-streaked cabin window at night. Full 360-degree cabin environment, condensation, droplets with optical refraction and rivulets, a wet sill with steaming coffee mug and candle, outdoor 3D rain, and distant forest / porch lights in fog.
 
 | Layer | What you see | Audio |
 |---|---|---|
@@ -324,7 +324,7 @@ interface SceneVisualizer {
 | `src/viz/scenes/registry.ts` | `lava` and `hearth` factories today; more later | shipped |
 | `src/viz/lava-lamp.ts` | Existing lamp, on the shared runtime (kept at this path) | shipped |
 | `src/viz/scenes/hearth.ts` | Ember Hearth | shipped (proof) |
-| `src/viz/scenes/rain.ts` | Rainlight Window | parked |
+| `src/viz/scenes/rain.ts` | Rainlight Window | shipped |
 | `src/viz/scenes/tide.ts` | Moonlit Tide | parked |
 | `src/viz/scenes/grove.ts` | Grove Lightwells | parked |
 | `src/viz/scenes/pond.ts` | Lantern Pond | parked |

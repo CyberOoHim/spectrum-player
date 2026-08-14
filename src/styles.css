@@ -273,6 +273,13 @@ optgroup {
     linear-gradient(180deg, #0a0d18 0%, #07060a 55%, #0a0604 100%);
 }
 
+#canvas-host.atmosphere-stage[data-scene="rain"] {
+  background:
+    radial-gradient(58% 45% at 50% 65%, #18283a 0%, transparent 60%),
+    radial-gradient(38% 30% at 65% 78%, #2d1c14 0%, transparent 68%),
+    linear-gradient(180deg, #080d16 0%, #060910 55%, #080c14 100%);
+}
+
 .canvas-floating-actions {
   position: absolute;
   top: 1.25rem;
